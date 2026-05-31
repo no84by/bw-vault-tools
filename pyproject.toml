@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bw-vault-tools"
+version = "0.0.0"
+description = "Local CLI tools for Bitwarden/Vaultwarden: in-place dedup and reversible two-way sync, driven through the bw CLI."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "no84by" }]
+keywords = ["bitwarden", "vaultwarden", "dedup", "sync", "cli"]
+
+# Single runtime dependency (the passphrase key provider). Installed automatically
+# by the self-bootstrap on first run; pinned here for reproducible environments.
+dependencies = ["cryptography>=42,<45"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+bw-dedup = "bw_vault_tools.cli_dedup:main"
+bw-sync = "bw_vault_tools.cli_sync:main"
+
+[project.urls]
+Homepage = "https://github.com/no84by/bw-vault-tools"
+Predecessor = "https://github.com/no84by/bitwarden-vault-cleanup"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

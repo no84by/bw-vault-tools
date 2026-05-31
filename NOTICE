@@ -1,0 +1,8 @@
+bw-vault-tools
+Copyright (c) 2026 no84by
+
+This product includes software derived from bitwarden-vault-cleanup
+(https://github.com/no84by/bitwarden-vault-cleanup), Copyright (c) 2025 no84by,
+licensed under the MIT License. The deduplication algorithm (URI normalization,
+content fingerprinting, group-by-(uri,username,password), and best-entry
+scoring) in src/bw_vault_tools/identity.py originates there.

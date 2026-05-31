@@ -1,0 +1,27 @@
+# Never commit vault exports or any decrypted material
+*.json
+!docs/**/*.json
+!tests/fixtures/**/*.json
+*.csv
+*.age
+*.enc
+*.snapshot
+snapshot*
+runs/
+*.ndjson
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Secrets / env
+.env
+*.cred
