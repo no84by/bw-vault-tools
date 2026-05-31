@@ -29,6 +29,15 @@ sharing a core with `bw-sync` (see companion spec); the old dedup algorithm is t
 > **3. Reversible.** Pre-run encrypted full export + op journal with inverse pre-images;
 > `bw-dedup undo <run>`. Soft-delete is the primary reversal primitive.
 
+> **4. Total-preservation invariant.** Every input item must round-trip to the output unless
+> the plan *explicitly* and *approvedly* removed it (an exact-duplicate drop or an
+> approved delete). An item the tool cannot deduplicate — a login with no URI, an unknown
+> item type, any record that falls through the matcher — is passed through **unchanged**,
+> never silently dropped. (This is the lesson of `bitwarden-vault-cleanup` issue #1, where
+> no-URI logins were skipped and lost; carried here as a hard invariant. The delta-apply model
+> already preserves IDs, but the invariant is enforced and tested directly so the class of bug
+> cannot recur.)
+
 ---
 
 ## Goal & relationship to the old script
@@ -99,9 +108,11 @@ keystroke `[a]pprove / [e]dit / [k]eep-both / [s]kip`, non-TTY refuses destructi
 
 `identity.py` + plan-builder are pure functions over JSON fixtures — port the old tool's
 behaviours as regression fixtures (URI-merge, exact-dup, folder-assign, reuse-flag, ambiguous-
-retain) plus **new** fixtures: a type-5 SSH-key item (counted, never merged) and a
-`fido2Credentials` login (guarded out of every destructive bucket). `bw_adapter` mocked for
-unit tests; one live run against the real self-hosted vault in `--plan`, then a single-item
+retain) plus **new** fixtures: a type-5 SSH-key item (counted, never merged), a
+`fido2Credentials` login (guarded out of every destructive bucket), and a **no-URI login plus
+an unknown-type item** (Cornerstone 4 — both must appear unchanged in the output;
+input-id-set minus approved-removals must equal output-id-set). `bw_adapter` mocked for unit
+tests; one live run against the real self-hosted vault in `--plan`, then a single-item
 `--apply` round-tripped and `undo`-restored.
 
 ## Non-goals
