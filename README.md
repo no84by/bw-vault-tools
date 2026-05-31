@@ -1,18 +1,25 @@
 # bw-vault-tools
 
-Two local, unmanaged command-line tools for Bitwarden / Vaultwarden vaults, driven through the
+Local, unmanaged command-line tools for Bitwarden / Vaultwarden vaults, driven through the
 official `bw` CLI:
 
-- **`bw-dedup`** — in-place single-vault deduplicator. Reads a live vault via `bw export`,
-  computes a plan, and applies minimal per-item `bw edit`/`bw delete` deltas. Never
+- **`bw-dedup`** *(implemented)* — in-place single-vault deduplicator. Reads a live vault via
+  `bw export`, computes a plan, and applies minimal per-item `bw edit`/`bw delete` deltas. Never
   purge+reimport. The advanced successor to
   [`bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup) (still
-  maintained as the simple file-based tool, updated to v2.0 for current `bw`).
-- **`bw-sync`** — stateful, approval-gated, fully-reversible **two-way sync** between two
-  vaults (e.g. a self-hosted Vaultwarden and the bitwarden.com cloud). A true 3-way merge
-  against a persisted, encrypted last-synced snapshot.
+  maintained as the simple file-based tool).
+- **`bw-import`** *(implemented)* — aggregate passwords from your installed browsers into the
+  live vault. Detects browsers (presence-only — never reads their stores), guides each browser's
+  own CSV export, and `bw create`s only the logins not already present (additive-only,
+  plan-then-approve, journalled undo).
+- **`bw-sync`** *(designed, not yet built)* — stateful, approval-gated, reversible **two-way
+  sync** between two vaults. A true 3-way merge against a persisted, encrypted last-synced
+  snapshot.
 
-Both run entirely on your machine. No cloud service, no daemon, no telemetry.
+Together with [`bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup),
+these form one family at three automation levels: **Manual** (the file-based cleaner), **CLI**
+(`bw-dedup`/`bw-import`), **Auto** (`bw-sync`). Same dedup core (`identity.py`). All run entirely
+on your machine — no cloud service, no daemon, no telemetry.
 
 ## Which tool should I use?
 
@@ -27,10 +34,14 @@ Both run entirely on your machine. No cloud service, no daemon, no telemetry.
 
 ## Status
 
-Pre-implementation. The design is complete and lives under [`docs/design/`](docs/design/):
+- **`bw-dedup`** and **`bw-import`** — implemented and tested (58 tests).
+- **`bw-sync`** — designed; implementation pending.
 
-- [`bw-twoway-sync-design.md`](docs/design/2026-05-31-bw-twoway-sync-design.md)
+Designs + plans live under [`docs/design/`](docs/design/) and [`docs/plans/`](docs/plans/):
+
 - [`bw-dedup-cli-design.md`](docs/design/2026-05-31-bw-dedup-cli-design.md)
+- [`bw-import-design.md`](docs/design/2026-05-31-bw-import-design.md)
+- [`bw-twoway-sync-design.md`](docs/design/2026-05-31-bw-twoway-sync-design.md)
 - [`bw-cli-compatibility-matrix.md`](docs/design/2026-05-31-bw-cli-compatibility-matrix.md)
 
 ## Principles
