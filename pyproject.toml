@@ -22,6 +22,7 @@ dev = ["pytest>=8", "ruff>=0.5"]
 [project.scripts]
 bw-dedup = "bw_vault_tools.cli_dedup:main"
 bw-sync = "bw_vault_tools.cli_sync:main"
+bw-import = "bw_vault_tools.cli_import:main"
 
 [project.urls]
 Homepage = "https://github.com/no84by/bw-vault-tools"
