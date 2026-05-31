@@ -4,9 +4,15 @@
 the era the original `no84by/bitwarden-vault-cleanup` v1.9 script was written for (~April 2025,
 `bw` 2025.x) and now (`bw` 2026.5.x upstream; **2026.4.2 installed locally**), so that:
 
-1. the original script is **frozen against a known-good `bw` revision** (the "lock in time"
-   artifact), and
+1. the original script is **brought current with a minimal safety patch** (v2.0) rather than
+   frozen — it remains the simple file-based public tool, now safe against a 2026 vault, and
 2. the new `bw-vault-tools` (`bw-dedup` + `bw-sync`) accounts for every schema/behaviour delta.
+
+> **Decision change (2026-05-31):** the original plan was to *freeze* v1.9 untouched. The
+> operator chose instead to ship a **v2.0 safety+compat patch** to the old repo (keep it a
+> single-file, file-based tool; add type-5 labelling/pass-through + passkey detection/guard +
+> a loud purge warning), so the still-used public tool is not left unsafe against 2026 vaults.
+> The sections below reflect that outcome.
 
 This doc is the source of truth for the version banner copied into the old repo and the new
 repo's README. Companion to the two design specs of the same date.
@@ -45,20 +51,25 @@ release notes 2026.3–2026.5.
 - It dedups **only logins that carry a URI**; notes/cards/identities/SSH/URI-less logins pass
   through untouched (by design — but now there's a whole type it can't even label).
 
-None of this is a bug in v1.9 — it is a tool pinned to a schema. The fix is to **freeze it**,
-not patch it.
+None of this was a bug in v1.9 — it was a tool pinned to a schema. Rather than freeze it, v2.0
+brings it current with the minimum safe change.
 
-## "Lock in time" actions (the artifact)
+## v2.0 safety+compat patch (shipped 2026-05-31)
 
-1. **Tag** the old repo `v1.9-bw2025` at its current commit — the canonical frozen reference.
-2. **Banner** at the top of the old `README.md` and a header comment in the script:
-   > ⚠️ Frozen. Targets the Bitwarden `bw` export schema of ~2025.x (item types 1–4; no
-   > passkeys, SSH keys, or attachments). Running against a 2026+ vault — especially the
-   > purge+reimport step — can lose passkeys. Superseded by **`bw-vault-tools`** (`bw-dedup`
-   > applies in-place deltas via the `bw` CLI and never purges).
-3. **`COMPATIBILITY.md`** in the old repo = this matrix (the version table + "cannot see" list).
-4. The new repo's README links back: "`bw-dedup` is the maintained successor to
-   `bitwarden-vault-cleanup`; the algorithm lives on in `identity.py` (MIT, credited)."
+Applied to `no84by/bitwarden-vault-cleanup` (commit on `main`, tag **`v2.0`**); single-file,
+file-based workflow unchanged:
+
+1. **SSH keys (type 5)** — labelled, counted, passed through untouched (were "Unknown Type").
+2. **Passkey logins (`login.fido2Credentials`)** — detected via `has_passkey()`, **excluded
+   from deduplication** (so a merge can never drop a passkey) and passed through untouched.
+3. **Loud passkey warning** in the summary before the purge+reimport recommendation, citing
+   clients#6925 — purge can lose passkeys the export never captured.
+4. **`COMPATIBILITY.md`** added to the old repo; **README** gains a v2.0 banner + successor
+   link. The new repo's README/NOTICE credit the old repo; the algorithm lives on as
+   `identity.py` (MIT).
+
+Validated: synthetic vault with duplicate logins + a type-5 SSH key + a passkey login carrying
+a credential-twin → dup removed, and passkey + twin + SSH key all preserved in the output JSON.
 
 ## Forward compatibility posture for `bw-vault-tools`
 
