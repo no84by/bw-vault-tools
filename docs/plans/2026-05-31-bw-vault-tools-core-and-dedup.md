@@ -28,6 +28,15 @@ Rev 1 was reviewed by three parallel architects (clean / correctness / simplicit
 - **Re-run safety:** `RunDir.completed_ids` skips already-applied item ops after an interrupted run.
 - **`key_provider` required when `apply=True`** (no silent `_NullRun`). **`Tpm2Provider` deferred to Plan 2** (stub raises). android-URI regex fixed (`@(.+?)(?:/|$)`).
 
+## Revision 3 — carried from bitwarden-vault-cleanup v2.1 (2026-05-31)
+
+Hardening lessons from the v2.1 review of the predecessor script, ported here so the rewrite ships with them from day one:
+
+- **`normalize_uri` null/empty-safe** (Task 2): `{"uri": null}` entries returned `""` instead of crashing the run (`AttributeError`). Test added.
+- **`merge_uris` skips null URIs** (Task 4): a `None` uri would otherwise make `sorted()` raise. Test added.
+- **Export-shape validation** (Task 12 `_validate_export`): reject a non-dict / missing-`items` export, warn on zero items, before any plan/apply. (Encrypted-export case is N/A — `bw export` is always decrypted JSON — so it is intentionally not re-checked here.)
+- Already covered, no carry needed: no plaintext secrets printed (logs counts only), non-TTY refuses destructive ops, no-plaintext-at-rest (tmpfs+shred + encrypted snapshot — stronger than the script's 0600), preserve-non-deduplicable invariant (Cornerstone 4), `all_same` dedup.
+
 ---
 
 ## File Structure (Plan 1)
@@ -167,6 +176,11 @@ def test_normalize_uri_android_with_and_without_trailing_slash():
     assert identity.normalize_uri("androidapp://com.example.app") == "com.example.app"
     assert identity.normalize_uri("android://hash@com.example.app/") == "com.example.app"
     assert identity.normalize_uri("android://hash@com.example.app") == "com.example.app"  # no slash
+
+def test_normalize_uri_tolerates_null_and_empty():
+    # carried from bitwarden-vault-cleanup v2.1: a {"uri": null} entry must not crash the run
+    assert identity.normalize_uri(None) == ""
+    assert identity.normalize_uri("") == ""
 ```
 
 - [ ] **Step 2: run, expect FAIL** (no attribute `normalize_uri`).
@@ -177,7 +191,9 @@ def test_normalize_uri_android_with_and_without_trailing_slash():
 """Pure identity/dedup functions. Algorithm ported from bitwarden-vault-cleanup (MIT)."""
 import re
 
-def normalize_uri(uri: str) -> str:
+def normalize_uri(uri: str | None) -> str:
+    if not uri:                                        # tolerate {"uri": null} / empty (v2.1 carry)
+        return ""
     if uri.startswith("android://") or uri.startswith("androidapp://"):
         m = re.search(r"@(.+?)(?:/|$)", uri)          # tolerate missing trailing slash
         return m.group(1) if m else uri.split("://")[-1]
@@ -185,7 +201,7 @@ def normalize_uri(uri: str) -> str:
     return uri.split("/")[0]
 ```
 
-- [ ] **Step 4: run, expect PASS** (2 tests). **Step 5: commit** `feat(identity): normalize_uri (android-safe, MIT-credited)`.
+- [ ] **Step 4: run, expect PASS** (3 tests). **Step 5: commit** `feat(identity): normalize_uri (android-safe, null-safe, MIT-credited)`.
 
 ---
 
@@ -281,6 +297,12 @@ def test_merge_uris_unions_and_sorts():
     a = fx.login("a", uri="https://site.com")
     b = fx.login("b", uri="https://app.site.com")
     assert identity.merge_uris([a, b]) == ["https://app.site.com", "https://site.com"]
+
+def test_merge_uris_skips_null_uris():
+    # carried from bitwarden-vault-cleanup v2.1: a null uri must not crash sorted()
+    a = fx.login("a", uri="https://site.com")
+    a["login"]["uris"].append({"uri": None, "match": None})
+    assert identity.merge_uris([a]) == ["https://site.com"]
 ```
 
 - [ ] **Step 2: run, expect FAIL** (no attribute `pick_best`).
@@ -303,7 +325,8 @@ def pick_best(group: list[dict], reused: set[str]) -> dict:
     return sorted(group, key=lambda e: score_entry(e, reused))[-1]
 
 def merge_uris(group: list[dict]) -> list[str]:
-    return sorted({u["uri"] for e in group for u in (e.get("login", {}).get("uris") or [])})
+    # filter falsy uris (v2.1 carry): a {"uri": null} entry would otherwise make sorted() raise
+    return sorted({u["uri"] for e in group for u in (e.get("login", {}).get("uris") or []) if u.get("uri")})
 ```
 
 - [ ] **Step 4: run, expect PASS** (9 tests). **Step 5: commit** `feat(identity): score_entry + pick_best + merge_uris`.
@@ -1052,11 +1075,22 @@ def _apply_destructive(prof, op, by_id, run):
             run.record(d, {"action": "restore", "item_id": d})
             prof.delete(d)
 
+def _validate_export(vault) -> None:
+    """Guard the bw export shape (v2.1 carry). bw export is always decrypted JSON, so the
+    encrypted-export case can't arise here, but a malformed/empty export must never lead to a
+    destructive apply on a wrong assumption."""
+    if not isinstance(vault, dict) or "items" not in vault:
+        raise ValueError("bw export did not return a vault object with an 'items' key")
+    if not vault.get("items"):
+        print("[warn] export contains zero items — verify this is the intended vault.",
+              file=sys.stderr)
+
 def run_dedup(prof, approver=tty_approver, run_dir="/dev/shm/bwvt-run", apply=True,
               key_provider=None) -> DedupResult:
     if apply and key_provider is None:
         raise ValueError("key_provider required when apply=True (reversibility)")
     vault = prof.export()
+    _validate_export(vault)
     items = vault.get("items", [])
     by_id = {it["id"]: it for it in items}
     p = planmod.build_dedup_plan(items, vault.get("folders", []))
