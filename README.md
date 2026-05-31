@@ -14,6 +14,17 @@ official `bw` CLI:
 
 Both run entirely on your machine. No cloud service, no daemon, no telemetry.
 
+## Which tool should I use?
+
+- **New here, or want the simplest possible thing?** Use
+  **[bitwarden-vault-cleanup](https://github.com/no84by/bitwarden-vault-cleanup)** — a single
+  download-and-run Python file, no install and no CLI. It cleans/deduplicates an *exported*
+  vault JSON for you to re-import. That is the entry-level tool for everyone.
+- **Comfortable in a terminal and want more?** `bw-vault-tools` (this repo) is the advanced
+  option: it drives the `bw` CLI directly for **in-place** delta dedup (no purge+reimport) and
+  reversible **two-way sync** between two vaults. Same dedup algorithm at the core
+  (`identity.py`, credited to the entry-level tool), more power and more setup.
+
 ## Status
 
 Pre-implementation. The design is complete and lives under [`docs/design/`](docs/design/):
