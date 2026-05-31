@@ -5,8 +5,9 @@ official `bw` CLI:
 
 - **`bw-dedup`** — in-place single-vault deduplicator. Reads a live vault via `bw export`,
   computes a plan, and applies minimal per-item `bw edit`/`bw delete` deltas. Never
-  purge+reimport. The maintained successor to
-  [`bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup) (now frozen).
+  purge+reimport. The advanced successor to
+  [`bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup) (still
+  maintained as the simple file-based tool, updated to v2.0 for current `bw`).
 - **`bw-sync`** — stateful, approval-gated, fully-reversible **two-way sync** between two
   vaults (e.g. a self-hosted Vaultwarden and the bitwarden.com cloud). A true 3-way merge
   against a persisted, encrypted last-synced snapshot.

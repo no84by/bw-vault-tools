@@ -106,8 +106,8 @@ unit tests; one live run against the real self-hosted vault in `--plan`, then a 
 
 ## Non-goals
 
-Cross-server anything (that's `bw-sync`); attachment dedup; org/collection scope; behavioural
-change to the frozen old script.
+Cross-server anything (that's `bw-sync`); attachment dedup; org/collection scope; any change
+to the old script beyond its shipped v2.0 safety patch.
 
 ## Risks & assumptions
 

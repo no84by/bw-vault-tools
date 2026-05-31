@@ -45,8 +45,9 @@ New public repo **`bw-vault-tools`** with two entrypoints — `bw-sync` (this sp
 `bw-dedup` (companion) — over a shared core. `bw-dedup` is the single-vault degenerate case of
 this engine, so they share identity-matching, the bw adapter, the key provider, the safety
 classifier, and the tmpfs/shred discipline. The original `no84by/bitwarden-vault-cleanup` repo
-is **frozen** (tagged `v1.9-bw2025`, banner → this repo); its dedup algorithm is lifted into
-`identity.py` with MIT attribution (`NOTICE` + README credit).
+is **maintained with a v2.0 safety+compat patch** (type-5 + passkey-guard; banner → this
+repo); its dedup algorithm is lifted into `identity.py` with MIT attribution (`NOTICE` +
+README credit).
 
 ## §2 — Components
 
@@ -172,7 +173,8 @@ runs/<ts>/
 Daemon/timer/managed service (explicitly unmanaged); organization/collection sync;
 attachment-body diffing (snapshot records attachment metadata only); conflict auto-resolution
 beyond the approved newest-wins-with-graft proposal; faithful passkey sync (blocked by the
-upstream export gap — guarded out instead); any behavioural change to the frozen old script.
+upstream export gap — guarded out instead); any change to the old script beyond its shipped
+v2.0 safety patch.
 
 ## Risks & assumptions
 
