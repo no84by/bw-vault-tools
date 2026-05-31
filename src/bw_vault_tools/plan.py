@@ -123,9 +123,12 @@ def build_dedup_plan(items: list[dict], folders: list[dict]) -> Plan:
     dedup_input = []
     for it in items:
         if models.is_login(it) and models.has_passkey(it):
-            p.preserved_ids.add(it["id"]); p.flagged_passkey_ids.add(it["id"]); p.flagged_guard_ids.add(it["id"])
+            p.preserved_ids.add(it["id"])
+            p.flagged_passkey_ids.add(it["id"])
+            p.flagged_guard_ids.add(it["id"])
         elif models.item_type(it) == 5:
-            p.preserved_ids.add(it["id"]); p.flagged_guard_ids.add(it["id"])
+            p.preserved_ids.add(it["id"])
+            p.flagged_guard_ids.add(it["id"])
         elif models.is_login(it) and models.has_uris(it):
             dedup_input.append(it)
         else:                                              # non-login / no-URI login / unknown
