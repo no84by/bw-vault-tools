@@ -1,5 +1,30 @@
-from bw_vault_tools import content, merge, snapshot
+from bw_vault_tools import content, identity, merge, snapshot
 from tests import fixtures as fx
+
+
+def test_create_on_b_suppressed_when_already_in_b_org():
+    # A-only login that already exists in B's org must NOT be re-created on B's personal vault
+    # (that would undo bw-dedup's cross-boundary clear). It's reported as suppressed instead.
+    a = [fx.login("a1", uri="https://x.com", username="u", password="p")]
+    org_b = {identity.fingerprint(a[0])}
+    r = merge.three_way(a, [], snapshot.Snapshot(), org_b_fps=org_b)
+    assert [o for o in r.ops if o.kind == "create"] == []
+    assert [(o.kind, o.target) for o in r.suppressed] == [("create", "B")]
+
+
+def test_create_on_a_suppressed_when_already_in_a_org():
+    b = [fx.login("b1", uri="https://y.com", username="v", password="q")]
+    org_a = {identity.fingerprint(b[0])}
+    r = merge.three_way([], b, snapshot.Snapshot(), org_a_fps=org_a)
+    assert [o for o in r.ops if o.kind == "create"] == []
+    assert [(o.kind, o.target) for o in r.suppressed] == [("create", "A")]
+
+
+def test_create_proceeds_when_not_in_target_org():
+    a = [fx.login("a1", uri="https://x.com", username="u", password="p")]
+    r = merge.three_way(a, [], snapshot.Snapshot(), org_b_fps={("other.com", "z", "w")})
+    assert [(o.kind, o.target) for o in r.ops] == [("create", "B")]
+    assert r.suppressed == []
 
 
 def _snap(pairs):

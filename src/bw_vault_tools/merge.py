@@ -20,6 +20,7 @@ class SyncOp:
 class MergeResult:
     ops: list = field(default_factory=list)
     new_snapshot: object = None
+    suppressed: list = field(default_factory=list)   # creates skipped: item already in target's org
 
 
 def _guard(item):
@@ -38,8 +39,16 @@ def _op(kind, target, item, link_id="", destructive=False, guarded=False, note="
                   destructive=destructive, guarded=guarded, note=note)
 
 
-def three_way(a_items, b_items, snap):
+def _in_org(item, org_fps):
+    # an item is "already present" on a side if its full fingerprint matches one of that
+    # side's org login items — re-creating its personal copy would undo bw-dedup's org-clear.
+    return (bool(org_fps) and models.is_login(item) and models.has_uris(item)
+            and identity.fingerprint(item) in org_fps)
+
+
+def three_way(a_items, b_items, snap, org_a_fps=frozenset(), org_b_fps=frozenset()):
     ops = []
+    suppressed = []
     new = snapmod.Snapshot()
     a_by = {i["id"]: i for i in a_items}
     b_by = {i["id"]: i for i in b_items}
@@ -95,11 +104,16 @@ def three_way(a_items, b_items, snap):
         if match:                               # same logical item both sides, never synced -> pair
             b = match.pop(0)
             new.record(str(uuid.uuid4()), a["id"], b["id"], content.content_key(a), a)
+        elif _in_org(a, org_b_fps):             # already in B's org -> don't re-create on B personal
+            suppressed.append(_op("create", "B", a, note="present in B org"))
         else:
             ops.append(_op("create", "B", a, guarded=_guard(a)))
             new.record(str(uuid.uuid4()), a["id"], "", content.content_key(a), a)
     for leftover in (i for lst in b_index.values() for i in lst):
+        if _in_org(leftover, org_a_fps):        # already in A's org -> don't re-create on A personal
+            suppressed.append(_op("create", "A", leftover, note="present in A org"))
+            continue
         ops.append(_op("create", "A", leftover, guarded=_guard(leftover)))
         new.record(str(uuid.uuid4()), "", leftover["id"], content.content_key(leftover), leftover)
 
-    return MergeResult(ops=ops, new_snapshot=new)
+    return MergeResult(ops=ops, new_snapshot=new, suppressed=suppressed)
