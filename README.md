@@ -151,7 +151,9 @@ bw-sync --appdata-a "<DIR_A>" --appdata-b "<DIR_B>" --snapshot "<SNAPSHOT_PATH>"
 ```
 First run pairs identical items and creates the divergent ones both ways. Later runs use the
 snapshot for a true 3-way merge (edits + deletes + newest-wins conflicts), all gated and
-reversible. **Tip:** take a `bw export` backup of both vaults before the first `--apply`.
+reversible. Every `--apply` automatically writes an encrypted pre-mutation baseline export of
+**both** vaults before touching anything, on top of the per-op `--undo` journal — no manual
+backup step required.
 
 ## Credit
 
