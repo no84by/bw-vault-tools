@@ -2,7 +2,8 @@
 import sys
 from dataclasses import dataclass
 
-from . import checkpoint, keyprovider, merge as mergemod, snapshot as snapmod, tmpfs
+from . import (capabilities, checkpoint, identity, keyprovider, merge as mergemod, models,
+               snapshot as snapmod, tmpfs)
 
 
 @dataclass
@@ -11,6 +12,16 @@ class SyncResult:
     applied: int = 0
     gated: int = 0
     guarded: int = 0
+    suppressed: int = 0
+
+
+def _org_fps(prof):
+    """Fingerprints of a profile's org login items, so a create can be suppressed when the
+    item already lives in that side's org (mirrors bw-dedup's org-awareness)."""
+    if not hasattr(prof, "list_items"):
+        return frozenset()
+    return {identity.fingerprint(o) for o in capabilities.org_reference_items(prof)
+            if models.is_login(o) and models.has_uris(o)}
 
 
 def tty_approver(op) -> bool:
@@ -28,13 +39,14 @@ def run_sync(prof_a, prof_b, snapshot_path, apply=True, key_provider=None,
     a = exp_a.get("items", [])
     b = exp_b.get("items", [])
     snap = snapmod.load(snapshot_path, key_provider) if key_provider else snapmod.Snapshot()
-    result = mergemod.three_way(a, b, snap)
+    result = mergemod.three_way(a, b, snap, org_a_fps=_org_fps(prof_a), org_b_fps=_org_fps(prof_b))
     safe = [o for o in result.ops if not o.destructive and not o.guarded]
     gated = [o for o in result.ops if o.destructive]
     guarded = [o for o in result.ops if o.guarded]
-    res = SyncResult(planned=len(result.ops), gated=len(gated), guarded=len(guarded))
+    res = SyncResult(planned=len(result.ops), gated=len(gated), guarded=len(guarded),
+                     suppressed=len(result.suppressed))
     print(f"sync plan: {len(safe)} safe, {len(gated)} gated, {len(guarded)} guarded "
-          f"({len(result.ops)} total).")
+          f"({len(result.ops)} total); {len(result.suppressed)} suppressed (already in target org).")
     if not apply:
         print("[--plan] dry-run; no changes.")
         return res
