@@ -150,12 +150,14 @@ def build_dedup_plan(items: list[dict], folders: list[dict], org_reference: list
         if len(group) == 1:
             kept = group[0]
         else:
-            all_same = all(                                # exact-dup test (mirrors v2.0): keep first
-                e["login"].get("password") == group[0]["login"].get("password")
-                and e.get("revisionDate") == group[0].get("revisionDate")
-                and e.get("creationDate") == group[0].get("creationDate")
-                for e in group)
-            if all_same:
+            # Pure-delete is only safe when merging would change nothing: every member shares the
+            # same URI set AND the same notes (timestamps are irrelevant — identical dates do NOT
+            # imply identical content). Otherwise MERGE so no unique URI/note is ever lost.
+            def _uriset(e):
+                return frozenset(u["uri"] for u in (e["login"].get("uris") or []) if u.get("uri"))
+            identical_content = (len({_uriset(e) for e in group}) == 1
+                                 and len({(e.get("notes") or "").strip() for e in group}) == 1)
+            if identical_content:
                 kept = group[0]
                 for e in group[1:]:
                     p.ops.append(DeleteOp(item_id=e["id"], payload=e))

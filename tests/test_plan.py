@@ -42,6 +42,27 @@ def test_date_or_uri_variants_produce_merge_op():
     assert set(merges[0].uris) == {"https://site.com", "https://m.site.com"}
 
 
+def test_same_timestamps_but_differing_uris_merge_not_delete():
+    # identical password AND identical creation/revision dates (fools a timestamp-only exact-dup
+    # test) but b carries a URI a lacks -> must MERGE (union), never pure-delete b and lose it.
+    a = fx.login("a", uri="https://site.com", username="u", password="p")
+    b = fx.login("b", uri="https://site.com", username="u", password="p")
+    b["login"]["uris"].append({"uri": "https://extra.site.com", "match": None})
+    p = _plan([a, b])
+    assert [o for o in p.ops if isinstance(o, plan.DeleteOp)] == []
+    merges = [o for o in p.ops if isinstance(o, plan.MergeOp)]
+    assert len(merges) == 1
+    assert "https://extra.site.com" in set(merges[0].uris)
+
+
+def test_same_timestamps_but_differing_notes_merge_not_delete():
+    a = fx.login("a", username="u", password="p", notes="recovery code 123")
+    b = fx.login("b", username="u", password="p", notes=None)
+    p = _plan([a, b])               # a has a note b lacks -> merge preserves it, never pure-delete
+    assert [o for o in p.ops if isinstance(o, plan.DeleteOp)] == []
+    assert len([o for o in p.ops if isinstance(o, plan.MergeOp)]) == 1
+
+
 def test_passkey_login_preserved_and_never_destructive():
     items = [fx.passkey_login("a", username="u", password="p"),
              fx.login("b", username="u", password="p")]
