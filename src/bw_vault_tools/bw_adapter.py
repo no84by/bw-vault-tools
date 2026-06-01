@@ -22,6 +22,12 @@ class BwProfile:
     def export(self) -> dict:
         return json.loads(self._run(["bw", "export", "--format", "json", "--raw"]))
 
+    def list_organizations(self) -> list:
+        return json.loads(self._run(["bw", "list", "organizations"]))
+
+    def list_items(self) -> list:
+        return json.loads(self._run(["bw", "list", "items"]))
+
     def create(self, item: dict) -> dict:
         return json.loads(self._run(["bw", "create", "item", _enc(item)]))
 

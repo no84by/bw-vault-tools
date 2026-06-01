@@ -3,7 +3,7 @@ import argparse
 import sys
 from dataclasses import dataclass
 
-from . import checkpoint, keyprovider, plan as planmod, tmpfs
+from . import capabilities, checkpoint, keyprovider, plan as planmod, tmpfs
 
 
 @dataclass
@@ -43,7 +43,7 @@ def _apply_safe(prof, op, by_id):
 
 
 def _apply_destructive(prof, op, by_id, run):
-    if isinstance(op, planmod.DeleteOp):
+    if isinstance(op, (planmod.DeleteOp, planmod.ClearPersonalDupOp)):
         if op.item_id in run.completed_ids:
             return
         run.record(op.item_id, op.inverse())
@@ -72,7 +72,8 @@ def run_dedup(prof, approver=tty_approver, run_dir="/dev/shm/bwvt-run", apply=Tr
     vault = prof.export()
     items = vault.get("items", [])
     by_id = {it["id"]: it for it in items}
-    p = planmod.build_dedup_plan(items, vault.get("folders", []))
+    org_reference = capabilities.org_reference_items(prof) if hasattr(prof, "list_items") else []
+    p = planmod.build_dedup_plan(items, vault.get("folders", []), org_reference=org_reference)
     assert p.check_invariant(set(by_id)), "preservation invariant violated"
 
     res = DedupResult(preserved=len(p.preserved_ids))

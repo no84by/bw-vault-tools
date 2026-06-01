@@ -54,3 +54,25 @@ def test_default_runner_injects_env_and_session(monkeypatch):
     assert captured["env"]["BITWARDENCLI_APPDATA_DIR"] == "/dev/shm/A"
     assert captured["env"]["BW_SESSION"] == "SESS"
     assert captured["cmd"][-2:] == ["--session", "SESS"]
+
+
+def test_list_organizations_parses():
+    r_orgs = '[{"id":"o1","name":"Familion","type":0,"status":2,"enabled":true}]'
+
+    def runner(args):
+        if args[:2] == ["bw", "list"] and "organizations" in args:
+            return r_orgs
+        return "[]"
+    prof = bw_adapter.BwProfile("/dev/shm/A", "S", runner=runner)
+    orgs = prof.list_organizations()
+    assert orgs[0]["name"] == "Familion"
+
+
+def test_list_items_parses():
+    def runner(args):
+        if args[:3] == ["bw", "list", "items"]:
+            return '[{"id":"a","organizationId":"o1"},{"id":"b","organizationId":null}]'
+        return "[]"
+    prof = bw_adapter.BwProfile("/dev/shm/A", "S", runner=runner)
+    items = prof.list_items()
+    assert {i["id"] for i in items} == {"a", "b"}
