@@ -28,11 +28,25 @@ class BwProfile:
     def list_items(self) -> list:
         return json.loads(self._run(["bw", "list", "items"]))
 
+    def get(self, item_id: str) -> dict:
+        return json.loads(self._run(["bw", "get", "item", item_id]))
+
     def create(self, item: dict) -> dict:
+        # the item comes from a different vault (sync) or a CSV (import): strip vault-scoped fields
+        # so it lands as a clean personal item — a source folderId/org is invalid in the target.
+        item = {**item, "folderId": None, "organizationId": None, "collectionIds": None}
         return json.loads(self._run(["bw", "create", "item", _enc(item)]))
 
     def edit(self, item_id: str, item: dict) -> dict:
-        return json.loads(self._run(["bw", "edit", "item", item_id, _enc(item)]))
+        try:
+            return json.loads(self._run(["bw", "edit", "item", item_id, _enc(item)]))
+        except subprocess.CalledProcessError as e:
+            if "out of date" not in (e.stderr or ""):
+                raise
+            # optimistic-lock miss (a prior edit in this run bumped the cipher): refresh the
+            # item's revisionDate from the server and retry once.
+            item = {**item, "revisionDate": self.get(item_id).get("revisionDate")}
+            return json.loads(self._run(["bw", "edit", "item", item_id, _enc(item)]))
 
     def delete(self, item_id: str, permanent: bool = False) -> None:
         args = ["bw", "delete", "item", item_id] + (["--permanent"] if permanent else [])

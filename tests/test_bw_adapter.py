@@ -1,6 +1,39 @@
+import base64
 import json
+import subprocess
 
 from bw_vault_tools import bw_adapter
+
+
+def test_create_strips_cross_vault_scoped_fields():
+    captured = {}
+    def runner(args):
+        if args[:2] == ["bw", "create"]:
+            captured["item"] = json.loads(base64.b64decode(args[3]))
+            return json.dumps({"id": "new"})
+        return ""
+    prof = bw_adapter.BwProfile("/dev/shm/A", "S", runner=runner)
+    prof.create({"id": "old", "type": 1, "name": "x", "folderId": "F-in-A",
+                 "organizationId": "O-in-A", "collectionIds": ["C"], "login": {}})
+    it = captured["item"]
+    assert it["folderId"] is None and it["organizationId"] is None and it["collectionIds"] is None
+
+
+def test_edit_refreshes_revisiondate_on_stale_cipher():
+    state = {"edits": 0}
+    def runner(args):
+        if args[:2] == ["bw", "edit"]:
+            state["edits"] += 1
+            if state["edits"] == 1:
+                raise subprocess.CalledProcessError(
+                    1, args, stderr="The client copy of this cipher is out of date. Resync and retry.")
+            return json.dumps({"id": "a"})
+        if args[:2] == ["bw", "get"]:
+            return json.dumps({"id": "a", "revisionDate": "2030-01-01T00:00:00.000Z"})
+        return ""
+    prof = bw_adapter.BwProfile("/dev/shm/A", "S", runner=runner)
+    out = prof.edit("a", {"id": "a", "name": "x", "revisionDate": "2020-01-01T00:00:00.000Z"})
+    assert out["id"] == "a" and state["edits"] == 2          # retried once after refreshing
 
 
 class FakeRunner:

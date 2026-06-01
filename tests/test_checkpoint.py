@@ -28,3 +28,11 @@ def test_completed_ids_survive_reopen(tmp_path):
     r1.record("x", {"action": "noop"})
     r2 = checkpoint.RunDir(str(tmp_path), kp())
     assert "x" in r2.completed_ids
+
+
+def test_new_run_dir_is_persistent_not_tmpfs(monkeypatch, tmp_path):
+    # the run dir (journal + baseline) must survive process exit so --undo works; not /dev/shm
+    monkeypatch.setattr(checkpoint, "data_home", lambda: str(tmp_path))
+    d = checkpoint.new_run_dir("dedup")
+    assert d.startswith(str(tmp_path)) and "bw-vault-tools" in d and "/dev/shm" not in d
+    assert checkpoint.os.path.isdir(d)

@@ -1,6 +1,27 @@
 """Reversibility: encrypted baseline export + journal of typed inverse pre-images."""
 import json
 import os
+import sys
+import time
+
+
+def data_home() -> str:
+    """OS-appropriate per-user data dir (XDG on Linux, Application Support on macOS, LOCALAPPDATA
+    on Windows)."""
+    if sys.platform == "win32":
+        return os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local")
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Application Support")
+    return os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+
+
+def new_run_dir(tool: str) -> str:
+    """A persistent, timestamped run directory holding only ENCRYPTED artifacts (baseline +
+    journal). Persisted (NOT tmpfs) so `--undo <run_dir>` still works after the process exits."""
+    ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    d = os.path.join(data_home(), "bw-vault-tools", "runs", f"{tool}-{ts}")
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 class RunDir:
