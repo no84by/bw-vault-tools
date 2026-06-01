@@ -8,7 +8,6 @@ from . import capabilities, checkpoint, keyprovider, plan as planmod, tmpfs
 
 @dataclass
 class DedupResult:
-    applied_safe: int = 0
     applied_destructive: int = 0
     preserved: int = 0
 
@@ -28,18 +27,6 @@ def _merged_notes(group_items):
         if n and n not in notes:
             notes.append(n)
     return "\n\n".join(notes) if notes else None
-
-
-def _apply_safe(prof, op, by_id):
-    if isinstance(op, planmod.AssignFolderOp):
-        item = dict(by_id[op.item_id])
-        item["folderId"] = op.folder_id
-        prof.edit(op.item_id, item)
-    elif isinstance(op, planmod.FlagReusedOp):
-        item = dict(by_id[op.item_id])
-        note = item.get("notes") or ""
-        item["notes"] = note if op.note in note else (note + "\n\n" + op.note).strip()
-        prof.edit(op.item_id, item)
 
 
 def _apply_destructive(prof, op, by_id, run):
@@ -77,7 +64,7 @@ def run_dedup(prof, approver=tty_approver, run_dir="/dev/shm/bwvt-run", apply=Tr
     assert p.check_invariant(set(by_id)), "preservation invariant violated"
 
     res = DedupResult(preserved=len(p.preserved_ids))
-    print(f"plan: {len(p.safe_ops)} safe, {len(p.gated_ops)} destructive, "
+    print(f"plan: {len(p.gated_ops)} dedup op(s) merge/remove, "
           f"{len(p.preserved_ids)} preserved ({len(p.flagged_guard_ids)} guarded).")
     if not apply:
         print("[--plan] dry-run; no changes.")
@@ -85,9 +72,6 @@ def run_dedup(prof, approver=tty_approver, run_dir="/dev/shm/bwvt-run", apply=Tr
 
     run = checkpoint.RunDir(run_dir, key_provider)
     run.write_baseline("vault", vault)
-    for op in p.safe_ops:
-        _apply_safe(prof, op, by_id)
-        res.applied_safe += 1
     for op in p.gated_ops:
         if approver(op):
             _apply_destructive(prof, op, by_id, run)
@@ -116,8 +100,7 @@ def main() -> int:
     kp = keyprovider.PassphraseProvider(getpass.getpass("snapshot passphrase: ")) if args.apply else None
     with tmpfs.tmpfs_dir() as rd:
         res = run_dedup(prof, run_dir=rd, apply=args.apply, key_provider=kp)
-    print(f"done: {res.applied_safe} safe, {res.applied_destructive} destructive, "
-          f"{res.preserved} preserved.")
+    print(f"done: {res.applied_destructive} merge/remove applied, {res.preserved} preserved.")
     return 0
 
 

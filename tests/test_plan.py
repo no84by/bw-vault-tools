@@ -5,8 +5,7 @@ from tests import fixtures as fx
 def test_op_destructive_flags():
     assert plan.DeleteOp("x", {"id": "x"}).destructive is True
     assert plan.MergeOp("a", ["b"], [], {}).destructive is True
-    assert plan.AssignFolderOp("a", "f", "F").destructive is False
-    assert plan.FlagReusedOp("a", "!").destructive is False
+    assert plan.ClearPersonalDupOp("x", {"id": "x"}).destructive is True
 
 
 def test_delete_inverse_is_restore():
@@ -83,12 +82,16 @@ def test_ssh_key_and_no_uri_and_unknown_preserved():
     assert "s" in p.flagged_guard_ids
 
 
-def test_reused_password_flagged_even_when_one_side_is_preserved():
-    items = [fx.passkey_login("k", uri="https://x.com", username="u", password="shared"),
-             fx.login("a", uri="https://y.com", username="v", password="shared")]
-    p = _plan(items)
-    flags = [o for o in p.ops if isinstance(o, plan.FlagReusedOp)]
-    assert any(o.item_id == "a" for o in flags)
+def test_plan_is_pure_dedup_no_folder_or_reuse_annotations():
+    # A folder named like the username + a reused password would, in the old tool, trigger a
+    # folder-assign and a reuse-note. bw-dedup is now pure dedup: only merge/remove ops, ever.
+    items = [fx.login("a", uri="https://x.com", username="silviu", password="shared"),
+             fx.login("b", uri="https://y.com", username="silviu", password="shared")]
+    folders = [{"id": "f1", "name": "silviu"}]
+    p = plan.build_dedup_plan(items, folders)
+    kinds = {type(o).__name__ for o in p.ops}
+    assert kinds <= {"DeleteOp", "MergeOp", "ClearPersonalDupOp"}
+    assert not hasattr(plan, "FlagReusedOp") and not hasattr(plan, "AssignFolderOp")
 
 
 def test_preservation_invariant_holds():
