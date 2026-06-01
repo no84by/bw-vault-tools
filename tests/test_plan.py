@@ -80,3 +80,32 @@ def test_preservation_invariant_holds():
 def test_invariant_catches_a_silent_drop():
     p = plan.Plan()
     assert p.check_invariant({"ghost"}) is False
+
+
+def test_clear_personal_dup_when_present_in_org():
+    items = [fx.login("p", uri="https://x.com", username="u", password="pw")]
+    org = [fx.login("o", uri="https://x.com", username="u", password="pw")]
+    p = plan.build_dedup_plan(items, [], org_reference=org)
+    clears = [o for o in p.ops if isinstance(o, plan.ClearPersonalDupOp)]
+    assert [c.item_id for c in clears] == ["p"]
+    assert "p" in p.removed_ids()
+    assert "o" not in {getattr(o, "item_id", None) for o in p.ops}
+
+
+def test_personal_not_in_org_is_untouched():
+    items = [fx.login("p", uri="https://x.com", username="u", password="pw")]
+    org = [fx.login("o", uri="https://other.com", username="v", password="zz")]
+    p = plan.build_dedup_plan(items, [], org_reference=org)
+    assert [o for o in p.ops if isinstance(o, plan.ClearPersonalDupOp)] == []
+
+
+def test_org_reference_none_is_unchanged():
+    items = [fx.login("a", username="u", password="p"), fx.login("b", username="u", password="p")]
+    p = plan.build_dedup_plan(items, [])
+    assert [o for o in p.ops if isinstance(o, plan.ClearPersonalDupOp)] == []
+
+
+def test_clear_op_inverse_is_restore():
+    op = plan.ClearPersonalDupOp(item_id="p", payload={"id": "p"})
+    assert op.destructive is True
+    assert op.inverse() == {"action": "restore", "item_id": "p"}

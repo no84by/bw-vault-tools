@@ -53,6 +53,18 @@ class MergeOp:
                 "restore_ids": list(self.drop_ids)}
 
 
+@dataclass
+class ClearPersonalDupOp:
+    """Soft-delete a PERSONAL login that is identical to an org item (org is authoritative).
+    Org data is never touched; only the redundant personal copy is removed."""
+    item_id: str
+    payload: dict
+    destructive: bool = field(default=True, init=False)
+
+    def inverse(self) -> dict:
+        return {"action": "restore", "item_id": self.item_id}
+
+
 def reused_passwords(items: list[dict]) -> set[str]:
     """Passwords used on >1 distinct domain. Computed over the FULL item set so a
     preserved/passkey item sharing a password still triggers a flag on its twin."""
@@ -100,7 +112,7 @@ class Plan:
     def removed_ids(self) -> set:
         out = set()
         for o in self.ops:
-            if isinstance(o, DeleteOp):
+            if isinstance(o, (DeleteOp, ClearPersonalDupOp)):
                 out.add(o.item_id)
             elif isinstance(o, MergeOp):
                 out.update(o.drop_ids)
@@ -115,7 +127,7 @@ class Plan:
         return removed <= input_ids and input_ids <= accounted
 
 
-def build_dedup_plan(items: list[dict], folders: list[dict]) -> Plan:
+def build_dedup_plan(items: list[dict], folders: list[dict], org_reference: list | None = None) -> Plan:
     p = Plan()
     folder_ids = {f["name"]: f["id"] for f in folders}
     reused = reused_passwords(items)                       # full set (see reused_passwords)
@@ -158,4 +170,16 @@ def build_dedup_plan(items: list[dict], folders: list[dict]) -> Plan:
             p.ops.append(fo)
         if (kept["login"].get("password") or "") in reused:
             p.ops.append(FlagReusedOp(item_id=kept["id"], note=_REUSE_NOTE))
+
+    # cross-boundary: clear personal logins that already exist in an org (org authoritative,
+    # read-only). Applies to surviving personal logins (group winners), never to org items.
+    if org_reference:
+        org_fps = {identity.fingerprint(o) for o in org_reference
+                   if models.is_login(o) and models.has_uris(o)}
+        by_id = {it["id"]: it for it in items}
+        for kid in list(p.kept_ids):
+            it = by_id.get(kid)
+            if it and models.is_login(it) and models.has_uris(it) and identity.fingerprint(it) in org_fps:
+                p.ops.append(ClearPersonalDupOp(item_id=kid, payload=it))
+                p.kept_ids.discard(kid)
     return p
