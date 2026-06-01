@@ -20,6 +20,9 @@ class FakeProfile:
     def restore(self, item_id):
         pass
 
+    def list_items(self):
+        return list(getattr(self, "_org", []))
+
 
 def approve_all(op):
     return True
@@ -74,3 +77,12 @@ def test_interrupted_run_skips_completed(tmp_path):
     prof = FakeProfile(items)
     cli_dedup.run_dedup(prof, approver=approve_all, run_dir=str(tmp_path), key_provider=kp())
     assert "b" not in prof.deleted
+
+
+def test_run_dedup_clears_personal_dup_in_org(tmp_path):
+    items = [fx.login("p", uri="https://x.com", username="u", password="pw")]
+    prof = FakeProfile(items)
+    prof._org = [fx.login("o", uri="https://x.com", username="u", password="pw", organization_id="org-1")]
+    res = cli_dedup.run_dedup(prof, approver=approve_all, run_dir=str(tmp_path), key_provider=kp())
+    assert prof.deleted == ["p"]
+    assert res.applied_destructive == 1
