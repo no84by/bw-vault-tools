@@ -70,6 +70,85 @@ Designs + plans live under [`docs/design/`](docs/design/) and [`docs/plans/`](do
 - A POSIX system with `/dev/shm` and `shred` (the TPM2 key provider additionally needs
   `systemd-creds`)
 
+## Install
+
+```bash
+# from GitHub (creates the bw-dedup / bw-import / bw-sync commands)
+pip install "git+https://github.com/no84by/bw-vault-tools"
+
+# or from a clone
+git clone https://github.com/no84by/bw-vault-tools && cd bw-vault-tools && pip install .
+```
+
+`cryptography` self-installs on first run if missing. You can also run without installing:
+`python -m bw_vault_tools.cli_dedup ...` (likewise `cli_import`, `cli_sync`).
+
+## Bitwarden CLI setup (one-time)
+
+Each vault is a **profile** = an isolated `BITWARDENCLI_APPDATA_DIR` with its own login. Your
+default profile already works; a second server (e.g. bitwarden.com) gets its own dir:
+
+```bash
+# default profile (e.g. your self-hosted Vaultwarden) — already set up if `bw` works
+bw login            # then `bw unlock` when prompted
+
+# a second, isolated profile (only needed for bw-sync)
+export BITWARDENCLI_APPDATA_DIR=~/.bw/cloud
+bw config server https://bitwarden.com
+bw login            # separate account; does not touch your other profile
+unset BITWARDENCLI_APPDATA_DIR
+```
+
+The tools unlock interactively (or read `BW_SESSION` from the environment if you export it).
+
+## Usage
+
+> **Always run `--plan` first** (the default — read-only, shows exactly what would change and
+> writes nothing). Only add `--apply` once the plan looks right. Deletes are soft (30-day trash)
+> and every `--apply` is journalled, so `--undo` reverses it.
+
+### `bw-dedup` — clean one vault in place
+
+```bash
+# 1. dry-run: see the plan (no changes). --appdata is the profile's data dir.
+bw-dedup --vault myvault --appdata "$HOME/.config/Bitwarden CLI"
+
+# 2. apply: auto-applies no-data-loss ops, prompts you to approve each delete/merge.
+#    Prompts once for a 'snapshot passphrase' (encrypts the undo journal).
+bw-dedup --vault myvault --appdata "$HOME/.config/Bitwarden CLI" --apply
+
+# 3. undo a run if needed (RUN_DIR is printed/located under the run; same passphrase)
+bw-dedup --vault myvault --appdata "$HOME/.config/Bitwarden CLI" --undo <RUN_DIR>
+```
+Org-aware: it reads your orgs read-only and proposes clearing personal logins that already live
+in an org (org copy is kept). It never edits or deletes org items.
+
+### `bw-import` — pull browser passwords into the vault
+
+```bash
+# In each browser: Settings -> Export passwords -> save the CSV to ~/Downloads.
+# Then:
+bw-import --vault myvault --appdata "$HOME/.config/Bitwarden CLI"          # --plan: shows N new / M already present
+bw-import --vault myvault --appdata "$HOME/.config/Bitwarden CLI" --apply  # bw create only the new logins
+bw-import --vault myvault --appdata "$HOME/.config/Bitwarden CLI" --undo <RUN_DIR>
+```
+Detects installed browsers (presence only — never reads their stores), guides the export, and
+creates **only** logins not already in your vault (re-running is a no-op).
+
+### `bw-sync` — two-way sync between two vaults
+
+```bash
+# A = profile A's data dir, B = profile B's data dir, SNAPSHOT = where the encrypted
+# last-synced state lives (created on first --apply).
+bw-sync --appdata-a "$HOME/.config/Bitwarden CLI" --appdata-b ~/.bw/cloud \
+        --snapshot ~/.bw/sync-state.enc                                   # --plan
+bw-sync --appdata-a "$HOME/.config/Bitwarden CLI" --appdata-b ~/.bw/cloud \
+        --snapshot ~/.bw/sync-state.enc --apply                           # apply (gated prompts)
+```
+First run pairs identical items and creates the divergent ones both ways. Later runs use the
+snapshot for a true 3-way merge (edits + deletes + newest-wins conflicts), all gated and
+reversible. **Tip:** take a `bw export` backup of both vaults before the first `--apply`.
+
 ## Credit
 
 The deduplication algorithm originates in
