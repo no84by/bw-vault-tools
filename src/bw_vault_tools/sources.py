@@ -3,6 +3,7 @@ Detection is by installed executable, never by reading/decrypting any browser cr
 import csv
 import os
 import shutil
+import sys
 import time
 import uuid
 
@@ -44,15 +45,40 @@ _EXPORT_STEPS = {
 }
 
 
-def detect_browsers():
-    """Installed browser families, by executable on PATH (shutil.which). Never reads any
-    credential store. Best-effort hint for export guidance only — the authoritative input is the
-    set of export files found by scan_for_exports; detection never gates an import."""
+# Windows does not put browser executables on PATH; they register under the App Paths registry
+# key instead. This is the Windows-native "is this app installed" lookup, the analogue of which().
+_BROWSER_WIN_EXES = {
+    "firefox": ["firefox.exe"], "chrome": ["chrome.exe"], "edge": ["msedge.exe"],
+    "brave": ["brave.exe"], "opera": ["opera.exe", "launcher.exe"], "vivaldi": ["vivaldi.exe"],
+}
+
+
+def _win_registered_browsers():
+    """Browser families registered in the Windows App Paths registry. Empty off-Windows."""
+    if sys.platform != "win32":
+        return set()
+    import winreg
     found = set()
-    for family, binaries in _BROWSER_BINARIES.items():
-        if any(shutil.which(b) for b in binaries):
-            found.add(family)
+    for family, exes in _BROWSER_WIN_EXES.items():
+        for exe in exes:
+            for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                try:
+                    winreg.OpenKey(root, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\\" + exe).Close()
+                    found.add(family)
+                    break
+                except OSError:
+                    continue
     return found
+
+
+def detect_browsers():
+    """Installed browser families. Linux/macOS: executable on PATH (shutil.which). Windows: the
+    App Paths registry (exes aren't on PATH). Never reads any credential store. Best-effort hint
+    for export guidance — the authoritative input is scan_for_exports; detection never gates an
+    import. Automation builds (chrome-for-testing, *-cdp) appear in neither and stay excluded."""
+    found = {fam for fam, binaries in _BROWSER_BINARIES.items()
+             if any(shutil.which(b) for b in binaries)}
+    return found | _win_registered_browsers()
 
 
 def downloads_dir():

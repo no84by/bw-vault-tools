@@ -40,7 +40,15 @@ def test_detect_browsers_by_installed_binary(monkeypatch):
 def test_detect_browsers_ignores_automation_profiles(monkeypatch):
     # chrome-for-testing / *-cdp expose no browser-named binary on PATH -> never detected
     monkeypatch.setattr(sources.shutil, "which", lambda n: None)
+    monkeypatch.setattr(sources, "_win_registered_browsers", set)
     assert sources.detect_browsers() == set()
+
+
+def test_detect_browsers_uses_windows_app_paths(monkeypatch):
+    # on Windows browser exes are not on PATH (App Paths registry instead); detection must still find them
+    monkeypatch.setattr(sources.shutil, "which", lambda n: None)         # nothing on PATH
+    monkeypatch.setattr(sources, "_win_registered_browsers", lambda: {"edge", "chrome"})
+    assert sources.detect_browsers() == {"edge", "chrome"}
 
 
 def test_scan_for_exports(tmp_path):
