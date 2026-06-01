@@ -23,8 +23,10 @@ def run_sync(prof_a, prof_b, snapshot_path, apply=True, key_provider=None,
              approver=tty_approver, run_dir="/dev/shm/bwvt-sync") -> SyncResult:
     if apply and key_provider is None:
         raise ValueError("key_provider required when apply=True")
-    a = prof_a.export().get("items", [])
-    b = prof_b.export().get("items", [])
+    exp_a = prof_a.export()
+    exp_b = prof_b.export()
+    a = exp_a.get("items", [])
+    b = exp_b.get("items", [])
     snap = snapmod.load(snapshot_path, key_provider) if key_provider else snapmod.Snapshot()
     result = mergemod.three_way(a, b, snap)
     safe = [o for o in result.ops if not o.destructive and not o.guarded]
@@ -37,6 +39,8 @@ def run_sync(prof_a, prof_b, snapshot_path, apply=True, key_provider=None,
         print("[--plan] dry-run; no changes.")
         return res
     run = checkpoint.RunDir(run_dir, key_provider)
+    run.write_baseline("A", exp_a)                    # encrypted pre-mutation snapshot of both
+    run.write_baseline("B", exp_b)                    # vaults — automatic, no manual export needed
     for op in safe:
         _apply(prof_a, prof_b, op, run, result.new_snapshot)
         res.applied += 1

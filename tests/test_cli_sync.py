@@ -1,4 +1,4 @@
-from bw_vault_tools import cli_sync, keyprovider
+from bw_vault_tools import checkpoint, cli_sync, keyprovider
 from tests import fixtures as fx
 
 
@@ -42,6 +42,17 @@ def test_first_run_creates_missing_both_ways_then_idempotent(tmp_path):
     res2 = cli_sync.run_sync(A, B, snapshot_path=snp, apply=True, key_provider=kp(),
                              approver=lambda op: True, run_dir=str(tmp_path / "run2"))
     assert res2.applied == 0                          # second run is a no-op
+
+
+def test_apply_writes_baseline_export_of_both_vaults_before_mutating(tmp_path):
+    A = FakeProfile([fx.login("a1", uri="https://only-a.com", username="u", password="p")])
+    B = FakeProfile([fx.login("b1", uri="https://only-b.com", username="v", password="q")])
+    run = str(tmp_path / "run")
+    cli_sync.run_sync(A, B, snapshot_path=str(tmp_path / "S.enc"), apply=True, key_provider=kp(),
+                      approver=lambda op: True, run_dir=run)
+    rd = checkpoint.RunDir(run, kp())
+    assert rd.read_baseline("A")["items"][0]["id"] == "a1"   # pre-mutation snapshot of A
+    assert rd.read_baseline("B")["items"][0]["id"] == "b1"   # pre-mutation snapshot of B
 
 
 def test_plan_mode_no_writes(tmp_path):
