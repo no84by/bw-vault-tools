@@ -3,7 +3,7 @@ import sys
 from dataclasses import dataclass
 
 from . import (capabilities, checkpoint, identity, keyprovider, merge as mergemod, models,
-               snapshot as snapmod, tmpfs)
+               snapshot as snapmod)
 
 
 @dataclass
@@ -47,6 +47,9 @@ def run_sync(prof_a, prof_b, snapshot_path, apply=True, key_provider=None,
                      suppressed=len(result.suppressed))
     print(f"sync plan: {len(safe)} safe, {len(gated)} gated, {len(guarded)} guarded "
           f"({len(result.ops)} total); {len(result.suppressed)} suppressed (already in target org).")
+    if guarded:
+        print("  held (passkey, can't round-trip via export): "
+              + ", ".join(sorted(o.item.get("name", "?") for o in guarded)))
     if not apply:
         print("[--plan] dry-run; no changes.")
         return res
@@ -56,10 +59,16 @@ def run_sync(prof_a, prof_b, snapshot_path, apply=True, key_provider=None,
     for op in safe:
         _apply(prof_a, prof_b, op, run, result.new_snapshot)
         res.applied += 1
+    skipped = []
     for op in gated:
         if approver(op):
             _apply(prof_a, prof_b, op, run, result.new_snapshot)
             res.applied += 1
+        else:
+            skipped.append(op)
+    if skipped:
+        print(f"NOTE: {len(skipped)} destructive op(s) NOT applied (declined / non-interactive): "
+              + ", ".join(o.item.get("name", "?") for o in skipped))
     snapmod.save(result.new_snapshot, snapshot_path, key_provider)
     return res
 
@@ -116,18 +125,30 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="bw-sync")
     ap.add_argument("--appdata-a", required=True)
     ap.add_argument("--appdata-b", required=True)
-    ap.add_argument("--snapshot", required=True, help="path to the encrypted last-synced snapshot")
+    ap.add_argument("--snapshot", help="path to the encrypted last-synced snapshot (plan/apply)")
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--undo", metavar="RUN_DIR", help="reverse a prior sync from its journal")
     args = ap.parse_args()
     sa = os.environ.get("BW_SESSION_A") or _unlock(args.appdata_a, "A")
     sb = os.environ.get("BW_SESSION_B") or _unlock(args.appdata_b, "B")
     prof_a = bw_adapter.BwProfile(args.appdata_a, sa)
     prof_b = bw_adapter.BwProfile(args.appdata_b, sb)
+    if args.undo:
+        n = undo(prof_a, prof_b, args.undo,
+                 keyprovider.PassphraseProvider(getpass.getpass("snapshot passphrase: ")))
+        print(f"undo: reversed {n} op(s).")
+        return 0
+    if not args.snapshot:
+        ap.error("--snapshot is required for plan/apply")
     need_key = args.apply or os.path.exists(args.snapshot)
     kp = keyprovider.PassphraseProvider(getpass.getpass("snapshot passphrase: ")) if need_key else None
-    with tmpfs.tmpfs_dir() as rd:
-        res = run_sync(prof_a, prof_b, args.snapshot, apply=args.apply, key_provider=kp, run_dir=rd)
-    print(f"done: {res.applied} applied, {res.gated} gated, {res.guarded} guarded.")
+    if args.apply:
+        rd = checkpoint.new_run_dir("sync")
+        res = run_sync(prof_a, prof_b, args.snapshot, apply=True, key_provider=kp, run_dir=rd)
+        print(f"done: {res.applied} applied, {res.gated} gated, {res.guarded} guarded.")
+        print(f'reversible: bw-sync --undo "{rd}"')
+    else:
+        res = run_sync(prof_a, prof_b, args.snapshot, apply=False, key_provider=kp)
     return 0
 
 

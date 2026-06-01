@@ -57,7 +57,7 @@ def main() -> int:
     import getpass
     import os
     import time
-    from . import bootstrap, bw_adapter, keyprovider, sources, tmpfs
+    from . import bootstrap, bw_adapter, checkpoint, keyprovider, sources
 
     bootstrap.ensure_cryptography()
     bootstrap.ensure_bw()
@@ -76,10 +76,15 @@ def main() -> int:
                     keyprovider.PassphraseProvider(getpass.getpass("snapshot passphrase: ")))
 
     candidates = _gather_candidates(sources, time)
-    kp = keyprovider.PassphraseProvider(getpass.getpass("snapshot passphrase: ")) if args.apply else None
-    with tmpfs.tmpfs_dir() as rd:
-        res = run_import(prof, candidates, run_dir=rd, apply=args.apply, key_provider=kp)
-    print(f"done: {res.created} created, {res.skipped} already present, {res.to_create} were new.")
+    if args.apply:
+        kp = keyprovider.PassphraseProvider(getpass.getpass("snapshot passphrase: "))
+        rd = checkpoint.new_run_dir("import")
+        res = run_import(prof, candidates, run_dir=rd, apply=True, key_provider=kp)
+        print(f"done: {res.created} created, {res.skipped} already present, {res.to_create} were new.")
+        print(f'reversible: bw-import --undo "{rd}"')
+    else:
+        res = run_import(prof, candidates, apply=False)
+        print(f"done: {res.created} created, {res.skipped} already present, {res.to_create} were new.")
     return 0
 
 

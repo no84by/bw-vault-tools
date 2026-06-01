@@ -3,7 +3,7 @@ import argparse
 import sys
 from dataclasses import dataclass
 
-from . import capabilities, checkpoint, keyprovider, plan as planmod, tmpfs
+from . import capabilities, checkpoint, keyprovider, plan as planmod
 
 
 @dataclass
@@ -66,17 +66,32 @@ def run_dedup(prof, approver=tty_approver, run_dir="/dev/shm/bwvt-run", apply=Tr
     res = DedupResult(preserved=len(p.preserved_ids))
     print(f"plan: {len(p.gated_ops)} dedup op(s) merge/remove, "
           f"{len(p.preserved_ids)} preserved ({len(p.flagged_guard_ids)} guarded).")
+    if p.flagged_guard_ids:
+        held = sorted(by_id[i]["name"] for i in p.flagged_guard_ids if i in by_id)
+        print("  held (passkey/SSH, never modified): " + ", ".join(held))
     if not apply:
         print("[--plan] dry-run; no changes.")
         return res
 
     run = checkpoint.RunDir(run_dir, key_provider)
     run.write_baseline("vault", vault)
+    skipped = []
     for op in p.gated_ops:
         if approver(op):
             _apply_destructive(prof, op, by_id, run)
             res.applied_destructive += 1
+        else:
+            skipped.append(op)
+    if skipped:
+        print(f"NOTE: {len(skipped)} destructive op(s) NOT applied (declined / non-interactive): "
+              + ", ".join(_op_name(o, by_id) for o in skipped))
     return res
+
+
+def _op_name(op, by_id):
+    if isinstance(op, planmod.MergeOp):
+        return by_id.get(op.keep_id, {}).get("name", op.keep_id)
+    return op.payload.get("name", op.item_id)
 
 
 def main() -> int:
@@ -97,10 +112,14 @@ def main() -> int:
     if args.undo:
         return _undo(prof, args.undo)
 
-    kp = keyprovider.PassphraseProvider(getpass.getpass("snapshot passphrase: ")) if args.apply else None
-    with tmpfs.tmpfs_dir() as rd:
-        res = run_dedup(prof, run_dir=rd, apply=args.apply, key_provider=kp)
-    print(f"done: {res.applied_destructive} merge/remove applied, {res.preserved} preserved.")
+    if args.apply:
+        kp = keyprovider.PassphraseProvider(getpass.getpass("snapshot passphrase: "))
+        rd = checkpoint.new_run_dir("dedup")
+        res = run_dedup(prof, run_dir=rd, apply=True, key_provider=kp)
+        print(f'done: {res.applied_destructive} merge/remove applied, {res.preserved} preserved.')
+        print(f'reversible: bw-dedup --undo "{rd}"')
+    else:
+        res = run_dedup(prof, apply=False)
     return 0
 
 
