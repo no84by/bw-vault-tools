@@ -4,29 +4,6 @@ from dataclasses import dataclass, field
 
 from . import identity, models
 
-_REUSE_NOTE = "[bw-dedup] [!] This password is reused across multiple sites."
-
-
-@dataclass
-class AssignFolderOp:
-    item_id: str
-    folder_id: str
-    folder_name: str
-    destructive: bool = field(default=False, init=False)
-
-    def inverse(self) -> dict:
-        return {"action": "edit", "item_id": self.item_id, "clear_folder": True}
-
-
-@dataclass
-class FlagReusedOp:
-    item_id: str
-    note: str
-    destructive: bool = field(default=False, init=False)
-
-    def inverse(self) -> dict:
-        return {"action": "noop"}            # appended note; safe to leave on undo
-
 
 @dataclass
 class DeleteOp:
@@ -81,18 +58,6 @@ def reused_passwords(items: list[dict]) -> set[str]:
     return {pw for pw, doms in pw_domains.items() if len(doms) > 1}
 
 
-def _folder_op(item: dict, folder_ids: dict) -> "AssignFolderOp | None":
-    """Pure: assign an existing folder whose name is a substring of the username, only if
-    folderId is empty. Ported from v2.0 assign_folder_id."""
-    if item.get("folderId"):
-        return None
-    uname = (item.get("login") or {}).get("username") or ""
-    for name, fid in folder_ids.items():
-        if name in uname:
-            return AssignFolderOp(item_id=item["id"], folder_id=fid, folder_name=name)
-    return None
-
-
 @dataclass
 class Plan:
     ops: list = field(default_factory=list)
@@ -100,10 +65,6 @@ class Plan:
     kept_ids: set = field(default_factory=set)            # group winners we kept/edited
     flagged_passkey_ids: set = field(default_factory=set)
     flagged_guard_ids: set = field(default_factory=set)
-
-    @property
-    def safe_ops(self):
-        return [o for o in self.ops if not o.destructive]
 
     @property
     def gated_ops(self):
@@ -129,8 +90,7 @@ class Plan:
 
 def build_dedup_plan(items: list[dict], folders: list[dict], org_reference: list | None = None) -> Plan:
     p = Plan()
-    folder_ids = {f["name"]: f["id"] for f in folders}
-    reused = reused_passwords(items)                       # full set (see reused_passwords)
+    reused = reused_passwords(items)                       # keeper-scoring only (prefer unique pw)
 
     dedup_input = []
     for it in items:
@@ -167,11 +127,6 @@ def build_dedup_plan(items: list[dict], folders: list[dict], org_reference: list
                 p.ops.append(MergeOp(keep_id=kept["id"], drop_ids=[e["id"] for e in losers],
                                      uris=identity.merge_uris(group), keep_before=kept))
         p.kept_ids.add(kept["id"])
-        fo = _folder_op(kept, folder_ids)
-        if fo:
-            p.ops.append(fo)
-        if (kept["login"].get("password") or "") in reused:
-            p.ops.append(FlagReusedOp(item_id=kept["id"], note=_REUSE_NOTE))
 
     # cross-boundary: clear personal logins that already exist in an org (org authoritative,
     # read-only). Applies to surviving personal logins (group winners), never to org items.
