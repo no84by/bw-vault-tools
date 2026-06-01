@@ -24,7 +24,15 @@ class MergeResult:
 
 
 def _guard(item):
+    # never auto-DESTROY or overwrite these: passkeys + SSH keys
     return models.has_passkey(item) or models.item_type(item) == 5
+
+
+def _create_guard(item):
+    # never auto-CREATE a passkey: bw export emits empty fido2Credentials (clients#6925), so the
+    # copy would be a broken passkey-less login. SSH keys (type 5) round-trip faithfully, so they
+    # ARE mirrored to the backup vault — holding them back would defeat the lock-out-proof backup.
+    return models.has_passkey(item)
 
 
 def _pair_key(item):
@@ -107,13 +115,17 @@ def three_way(a_items, b_items, snap, org_a_fps=frozenset(), org_b_fps=frozenset
         elif _in_org(a, org_b_fps):             # already in B's org -> don't re-create on B personal
             suppressed.append(_op("create", "B", a, note="present in B org"))
         else:
-            ops.append(_op("create", "B", a, guarded=_guard(a)))
-            new.record(str(uuid.uuid4()), a["id"], "", content.content_key(a), a)
+            g = _create_guard(a)
+            ops.append(_op("create", "B", a, guarded=g))
+            if not g:        # a held create never applies; recording it would look like a B-side
+                new.record(str(uuid.uuid4()), a["id"], "", content.content_key(a), a)  # delete next run
     for leftover in (i for lst in b_index.values() for i in lst):
         if _in_org(leftover, org_a_fps):        # already in A's org -> don't re-create on A personal
             suppressed.append(_op("create", "A", leftover, note="present in A org"))
             continue
-        ops.append(_op("create", "A", leftover, guarded=_guard(leftover)))
-        new.record(str(uuid.uuid4()), "", leftover["id"], content.content_key(leftover), leftover)
+        g = _create_guard(leftover)
+        ops.append(_op("create", "A", leftover, guarded=g))
+        if not g:
+            new.record(str(uuid.uuid4()), "", leftover["id"], content.content_key(leftover), leftover)
 
     return MergeResult(ops=ops, new_snapshot=new, suppressed=suppressed)

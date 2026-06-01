@@ -94,3 +94,24 @@ def test_passkey_guarded_never_destructive():
     a = fx.passkey_login("a1", uri="https://x.com", username="u", password="p")
     r = merge.three_way([a], [], snapshot.Snapshot())
     assert r.ops[0].guarded is True and r.ops[0].destructive is False
+
+
+def test_passkey_create_is_held_cannot_round_trip():
+    # bw export emits empty fido2Credentials, so creating a passkey on the other side is broken
+    a = fx.passkey_login("a1", uri="https://x.com", username="u", password="p")
+    r = merge.three_way([a], [], snapshot.Snapshot())
+    assert r.ops[0].kind == "create" and r.ops[0].guarded is True
+
+
+def test_ssh_key_is_mirrored_not_held():
+    # SSH keys (type 5) export faithfully -> they MUST sync to the backup vault, not be held
+    a = fx.ssh_key("s1")
+    r = merge.three_way([a], [], snapshot.Snapshot())
+    assert [(o.kind, o.target, o.guarded) for o in r.ops] == [("create", "B", False)]
+
+
+def test_held_passkey_create_not_recorded_in_snapshot():
+    # a held create never applies; recording a pairing would make next run see a phantom B-delete
+    a = fx.passkey_login("a1", uri="https://x.com", username="u", password="p")
+    r = merge.three_way([a], [], snapshot.Snapshot())
+    assert len(r.new_snapshot.entries) == 0          # nothing paired -> next run re-proposes the create
