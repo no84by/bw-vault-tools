@@ -28,11 +28,19 @@ def test_csv_to_items_maps_and_assigns_uuid():
     assert items[1]["login"]["uris"] is None          # NoUrlRow
 
 
-def test_detect_browsers_presence_only(tmp_path, monkeypatch):
-    (tmp_path / ".mozilla" / "firefox").mkdir(parents=True)
-    monkeypatch.setattr(sources.platform, "system", lambda: "Linux")
-    found = sources.detect_browsers(home=str(tmp_path))
-    assert "firefox" in found and "chrome" not in found
+def test_detect_browsers_by_installed_binary(monkeypatch):
+    # detection is by executable on PATH, NOT profile folders: channel/XDG/snap/flatpak agnostic.
+    installed = {"firefox", "microsoft-edge-dev"}      # /opt firefox symlink + Edge Dev channel
+    monkeypatch.setattr(sources.shutil, "which", lambda n: f"/usr/bin/{n}" if n in installed else None)
+    found = sources.detect_browsers()
+    assert "firefox" in found and "edge" in found      # a channel binary maps to its family
+    assert "chrome" not in found
+
+
+def test_detect_browsers_ignores_automation_profiles(monkeypatch):
+    # chrome-for-testing / *-cdp expose no browser-named binary on PATH -> never detected
+    monkeypatch.setattr(sources.shutil, "which", lambda n: None)
+    assert sources.detect_browsers() == set()
 
 
 def test_scan_for_exports(tmp_path):

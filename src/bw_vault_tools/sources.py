@@ -1,30 +1,27 @@
 """Browser discovery + user-exported CSV ingest. Ported from bitwarden-vault-cleanup (MIT).
-Presence-only detection: never opens/reads/decrypts any browser credential store."""
+Detection is by installed executable, never by reading/decrypting any browser credential store."""
 import csv
 import os
-import platform
+import shutil
 import time
 import uuid
 
 from . import identity
 
-BROWSERS = {
-    "firefox":  {"linux": ".mozilla/firefox", "darwin": "Library/Application Support/Firefox",
-                 "windows": "AppData/Roaming/Mozilla/Firefox"},
-    "chrome":   {"linux": ".config/google-chrome", "darwin": "Library/Application Support/Google/Chrome",
-                 "windows": "AppData/Local/Google/Chrome/User Data"},
-    "edge":     {"linux": ".config/microsoft-edge", "darwin": "Library/Application Support/Microsoft Edge",
-                 "windows": "AppData/Local/Microsoft/Edge/User Data"},
-    "brave":    {"linux": ".config/BraveSoftware/Brave-Browser",
-                 "darwin": "Library/Application Support/BraveSoftware/Brave-Browser",
-                 "windows": "AppData/Local/BraveSoftware/Brave-Browser/User Data"},
-    "opera":    {"linux": ".config/opera", "darwin": "Library/Application Support/com.operasoftware.Opera",
-                 "windows": "AppData/Roaming/Opera Software/Opera Stable"},
-    "vivaldi":  {"linux": ".config/vivaldi", "darwin": "Library/Application Support/Vivaldi",
-                 "windows": "AppData/Local/Vivaldi/User Data"},
-    "safari":   {"darwin": "Library/Safari"},
+# Detect a browser by its executable on PATH, not by guessing profile-folder locations. This is
+# channel- (stable/dev/beta), XDG- (~/.config/mozilla vs ~/.mozilla), snap- and flatpak-agnostic,
+# works the same on Linux/macOS/Windows (shutil.which honours PATHEXT), and naturally excludes
+# automation builds (chrome-for-testing, *-cdp) which expose no browser-named binary on PATH.
+_BROWSER_BINARIES = {
+    "firefox": ["firefox", "firefox-developer-edition", "firefox-esr", "firefox-bin", "firefox-nightly"],
+    "chrome":  ["google-chrome", "google-chrome-stable", "google-chrome-beta", "google-chrome-unstable",
+                "chromium", "chromium-browser", "chrome"],
+    "edge":    ["microsoft-edge", "microsoft-edge-stable", "microsoft-edge-dev", "microsoft-edge-beta",
+                "msedge"],
+    "brave":   ["brave-browser", "brave-browser-stable", "brave"],
+    "opera":   ["opera", "opera-stable"],
+    "vivaldi": ["vivaldi", "vivaldi-stable"],
 }
-_OS_KEY = {"Linux": "linux", "Darwin": "darwin", "Windows": "windows"}
 _BROWSER_CSV_KIND = {"chrome": "chromium_csv", "edge": "chromium_csv", "brave": "chromium_csv",
                      "opera": "chromium_csv", "vivaldi": "chromium_csv",
                      "firefox": "firefox_csv", "safari": "safari_csv"}
@@ -47,17 +44,14 @@ _EXPORT_STEPS = {
 }
 
 
-def detect_browsers(home=None):
-    """Installed browsers by profile-directory EXISTENCE only. Never reads inside them."""
-    home = home or os.path.expanduser("~")
-    osk = _OS_KEY.get(platform.system())
+def detect_browsers():
+    """Installed browser families, by executable on PATH (shutil.which). Never reads any
+    credential store. Best-effort hint for export guidance only — the authoritative input is the
+    set of export files found by scan_for_exports; detection never gates an import."""
     found = set()
-    if not osk:
-        return found
-    for name, paths in BROWSERS.items():
-        rel = paths.get(osk)
-        if rel and os.path.isdir(os.path.join(home, rel)):
-            found.add(name)
+    for family, binaries in _BROWSER_BINARIES.items():
+        if any(shutil.which(b) for b in binaries):
+            found.add(family)
     return found
 
 
