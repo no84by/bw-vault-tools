@@ -12,9 +12,16 @@ official `bw` CLI:
   live vault. Detects browsers (presence-only — never reads their stores), guides each browser's
   own CSV export, and `bw create`s only the logins not already present (additive-only,
   plan-then-approve, journalled undo).
-- **`bw-sync`** *(designed, not yet built)* — stateful, approval-gated, reversible **two-way
-  sync** between two vaults. A true 3-way merge against a persisted, encrypted last-synced
-  snapshot.
+- **`bw-sync`** *(implemented)* — stateful, approval-gated, reversible **two-way sync** between
+  two vaults. A true 3-way merge against a persisted, encrypted last-synced snapshot (adds +
+  edits + deletes, newest-wins conflicts, passkey-guarded, journalled undo).
+
+`bw-dedup` and `bw-sync` are **org-aware**: they read all your organizations read-only. Dedup
+clears personal logins that already live in an org (orgs are never written). An optional
+capacity-adaptive **sync-mirror** (replicate Vaultwarden orgs into a target org's collections,
+free-tier-aware) is built as a planning core; its live org-*write* apply is gated pending a test
+org. The tools are otherwise **personal-vault-scoped for writes** — they never modify org-shared
+items.
 
 Together with [`bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup),
 these form one family at three automation levels: **Manual** (the file-based cleaner), **CLI**
@@ -34,15 +41,11 @@ on your machine — no cloud service, no daemon, no telemetry.
 
 ## Status
 
-- **`bw-dedup`** and **`bw-import`** — implemented and tested (58 tests).
-- **`bw-sync`** — designed; implementation pending.
+- **`bw-dedup`**, **`bw-import`**, **`bw-sync`** — implemented and tested (91 tests).
+- **Org-aware dedup** + Phase-B mirror **planning core** — implemented; the live org-write
+  apply is gated pending a test org.
 
-Designs + plans live under [`docs/design/`](docs/design/) and [`docs/plans/`](docs/plans/):
-
-- [`bw-dedup-cli-design.md`](docs/design/2026-05-31-bw-dedup-cli-design.md)
-- [`bw-import-design.md`](docs/design/2026-05-31-bw-import-design.md)
-- [`bw-twoway-sync-design.md`](docs/design/2026-05-31-bw-twoway-sync-design.md)
-- [`bw-cli-compatibility-matrix.md`](docs/design/2026-05-31-bw-cli-compatibility-matrix.md)
+Designs + plans live under [`docs/design/`](docs/design/) and [`docs/plans/`](docs/plans/).
 
 ## Principles
 
