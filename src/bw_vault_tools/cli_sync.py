@@ -31,7 +31,7 @@ def tty_approver(op) -> bool:
 
 
 def run_sync(prof_a, prof_b, snapshot_path, apply=True, key_provider=None,
-             approver=tty_approver, run_dir="/dev/shm/bwvt-sync") -> SyncResult:
+             approver=tty_approver, run_dir="/dev/shm/bwvt-sync", conflict_policy="newest") -> SyncResult:
     if apply and key_provider is None:
         raise ValueError("key_provider required when apply=True")
     exp_a = prof_a.export()
@@ -39,7 +39,8 @@ def run_sync(prof_a, prof_b, snapshot_path, apply=True, key_provider=None,
     a = exp_a.get("items", [])
     b = exp_b.get("items", [])
     snap = snapmod.load(snapshot_path, key_provider) if key_provider else snapmod.Snapshot()
-    result = mergemod.three_way(a, b, snap, org_a_fps=_org_fps(prof_a), org_b_fps=_org_fps(prof_b))
+    result = mergemod.three_way(a, b, snap, org_a_fps=_org_fps(prof_a), org_b_fps=_org_fps(prof_b),
+                                conflict_policy=conflict_policy)
     safe = [o for o in result.ops if not o.destructive and not o.guarded]
     gated = [o for o in result.ops if o.destructive]
     guarded = [o for o in result.ops if o.guarded]
@@ -143,6 +144,8 @@ def main() -> int:
     ap.add_argument("--snapshot", help="path to the encrypted last-synced snapshot (plan/apply)")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--undo", metavar="RUN_DIR", help="reverse a prior sync from its journal")
+    ap.add_argument("--conflict", choices=["newest", "a-wins", "b-wins"], default="newest",
+                    help="how to resolve a divergence (default: newest revisionDate)")
     args = ap.parse_args()
     sa = os.environ.get("BW_SESSION_A") or _unlock(args.appdata_a, "A")
     sb = os.environ.get("BW_SESSION_B") or _unlock(args.appdata_b, "B")
@@ -159,11 +162,13 @@ def main() -> int:
     kp = keyprovider.PassphraseProvider(getpass.getpass("snapshot passphrase: ")) if need_key else None
     if args.apply:
         rd = checkpoint.new_run_dir("sync")
-        res = run_sync(prof_a, prof_b, args.snapshot, apply=True, key_provider=kp, run_dir=rd)
+        res = run_sync(prof_a, prof_b, args.snapshot, apply=True, key_provider=kp, run_dir=rd,
+                       conflict_policy=args.conflict)
         print(f"done: {res.applied} applied, {res.gated} gated, {res.guarded} guarded.")
         print(f'reversible: bw-sync --undo "{rd}"')
     else:
-        res = run_sync(prof_a, prof_b, args.snapshot, apply=False, key_provider=kp)
+        res = run_sync(prof_a, prof_b, args.snapshot, apply=False, key_provider=kp,
+                       conflict_policy=args.conflict)
     return 0
 
 

@@ -35,6 +35,16 @@ def _create_guard(item):
     return models.has_passkey(item)
 
 
+def _pick_winner(a, b, policy):
+    # how a divergence is resolved. 'a-wins'/'b-wins' make one vault canonical (e.g. a self-hosted
+    # primary with a cloud backup); 'newest' compares revisionDate (the default).
+    if policy == "a-wins":
+        return a
+    if policy == "b-wins":
+        return b
+    return a if a.get("revisionDate", "") >= b.get("revisionDate", "") else b
+
+
 def _pair_key(item):
     # cross-vault identity for first-run pairing: uri+username+type (password-agnostic)
     return identity.fingerprint(item, include_password=False)
@@ -54,7 +64,8 @@ def _in_org(item, org_fps):
             and identity.fingerprint(item) in org_fps)
 
 
-def three_way(a_items, b_items, snap, org_a_fps=frozenset(), org_b_fps=frozenset()):
+def three_way(a_items, b_items, snap, org_a_fps=frozenset(), org_b_fps=frozenset(),
+               conflict_policy="newest"):
     ops = []
     suppressed = []
     new = snapmod.Snapshot()
@@ -83,7 +94,7 @@ def three_way(a_items, b_items, snap, org_a_fps=frozenset(), org_b_fps=frozenset
                 ops.append(_op("edit", "A", b, e.link_id, guarded=_guard(b)))
                 new.record(e.link_id, a["id"], b["id"], cb, b)
             else:                             # both differ from base -> gated conflict that PERSISTS
-                winner = a if a.get("revisionDate", "") >= b.get("revisionDate", "") else b
+                winner = _pick_winner(a, b, conflict_policy)
                 tgt = "B" if winner is a else "A"
                 ops.append(_op("conflict", tgt, winner, e.link_id, destructive=True, guarded=_guard(winner)))
                 new.record(e.link_id, a["id"], b["id"], None, winner)   # None until a winner is applied
@@ -119,7 +130,7 @@ def three_way(a_items, b_items, snap, org_a_fps=frozenset(), org_b_fps=frozenset
                 new.record(str(uuid.uuid4()), a["id"], exact["id"], ck, a)   # identical -> silent pair
             else:                               # same login, DIFFERENT content + no prior history:
                 b = match.pop(0)               # a real divergence -> gate it, never silently overwrite
-                winner = a if a.get("revisionDate", "") >= b.get("revisionDate", "") else b
+                winner = _pick_winner(a, b, conflict_policy)
                 tgt = "B" if winner is a else "A"
                 lid = str(uuid.uuid4())
                 ops.append(_op("conflict", tgt, winner, lid, destructive=True, guarded=_guard(winner)))
