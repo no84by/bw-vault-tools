@@ -44,14 +44,6 @@ machine — no cloud service, no daemon, no telemetry.
   reversible **two-way sync** between two vaults. Same dedup algorithm at the core
   (`identity.py`, credited to the entry-level tool), more power and more setup.
 
-## Status
-
-- **`bw-dedup`**, **`bw-import`**, **`bw-sync`** — implemented and tested (91 tests).
-- **Org-aware dedup** + Phase-B mirror **planning core** — implemented; the live org-write
-  apply is gated pending a test org.
-
-Designs + plans live under [`docs/design/`](docs/design/) and [`docs/plans/`](docs/plans/).
-
 ## Principles
 
 - **No destructive op without explicit approval.** Deletes and overwriting edits are gated
