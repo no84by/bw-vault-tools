@@ -112,6 +112,15 @@ def test_divergent_first_pairing_is_gated_conflict_not_silent_overwrite():
     assert [(o.kind, o.target, o.destructive) for o in r.ops] == [("conflict", "B", True)]
 
 
+def test_conflict_policy_a_wins_overrides_newest():
+    # B is newer, so 'newest' would push B->A; 'a-wins' must keep A canonical and push A->B instead.
+    a = fx.login("a1", uri="https://x.com", username="u", password="A", revision="2026-01-01T00:00:00.000Z")
+    b = fx.login("b1", uri="https://x.com", username="u", password="B", revision="2026-02-01T00:00:00.000Z")
+    assert merge.three_way([a], [b], snapshot.Snapshot(), conflict_policy="newest").ops[0].target == "A"
+    r = merge.three_way([a], [b], snapshot.Snapshot(), conflict_policy="a-wins")
+    assert r.ops[0].kind == "conflict" and r.ops[0].target == "B" and r.ops[0].item["id"] == "a1"
+
+
 def test_divergence_persists_as_conflict_across_runs():
     # an unresolved divergence must stay a gated conflict every run (base=None), never silently
     # flip to a one-sided auto-edit once the snapshot exists.
