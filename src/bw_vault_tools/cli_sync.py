@@ -76,6 +76,16 @@ def run_sync(prof_a, prof_b, snapshot_path, apply=True, key_provider=None,
     return res
 
 
+def _edit_to(run, prof, tid, cur, new_item):
+    """Write new_item's content onto the target's own item (id), keeping its structural fields;
+    record the pre-edit state for undo."""
+    run.record(tid, {"action": "edit", "item_id": tid, "item": cur})
+    prof.edit(tid, {**new_item, "id": tid, "folderId": cur.get("folderId"),
+                    "organizationId": cur.get("organizationId"),
+                    "collectionIds": cur.get("collectionIds"),
+                    "revisionDate": cur.get("revisionDate")})
+
+
 def _apply(prof_a, prof_b, op, run, new_snap, a_by, b_by):
     if op.kind == "create":
         prof = prof_a if op.target == "A" else prof_b
@@ -88,23 +98,26 @@ def _apply(prof_a, prof_b, op, run, new_snap, a_by, b_by):
                 e.id_on_b = created["id"]
             else:
                 e.id_on_a = created["id"]
-    elif op.kind in ("edit", "conflict"):
-        # apply the SOURCE/winner content to the TARGET vault's own item (by the target's id),
-        # keeping the target's structural fields so a foreign folderId/revision can't break it.
+    elif op.kind == "edit":
+        # one-sided change: write the source content to the OTHER vault's own item (by its id),
+        # keeping that vault's structural fields so a foreign folderId/revision can't break it.
         e = new_snap.entries.get(op.link_id)
         if not e:
             return
         prof, tid, cur = ((prof_a, e.id_on_a, a_by.get(e.id_on_a)) if op.target == "A"
                           else (prof_b, e.id_on_b, b_by.get(e.id_on_b)))
-        if not tid or cur is None:
+        if tid and cur is not None:
+            _edit_to(run, prof, tid, cur, op.item)
+    elif op.kind == "merge":
+        # divergence resolved by union: write the merged item to BOTH vaults so neither loses data.
+        e = new_snap.entries.get(op.link_id)
+        if not e:
             return
-        run.record(tid, {"action": "edit", "item_id": tid, "item": cur})   # undo: restore target as-was
-        prof.edit(tid, {**op.item, "id": tid, "folderId": cur.get("folderId"),
-                        "organizationId": cur.get("organizationId"),
-                        "collectionIds": cur.get("collectionIds"),
-                        "revisionDate": cur.get("revisionDate")})
-        if op.kind == "conflict":
-            e.content = content.content_key(op.item)   # winner applied -> baseline agreed -> converges
+        for prof, tid, by in ((prof_a, e.id_on_a, a_by), (prof_b, e.id_on_b, b_by)):
+            cur = by.get(tid)
+            if tid and cur is not None:
+                _edit_to(run, prof, tid, cur, op.item)
+        e.content = content.content_key(op.item)       # both sides now == merged -> converges
     elif op.kind == "delete":
         prof = prof_a if op.target == "A" else prof_b
         run.record(op.item["id"], {"action": "restore", "item_id": op.item["id"]})
