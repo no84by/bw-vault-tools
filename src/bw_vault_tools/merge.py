@@ -110,8 +110,19 @@ def three_way(a_items, b_items, snap, org_a_fps=frozenset(), org_b_fps=frozenset
     for a in a_left:
         match = b_index.get(_pair_key(a))
         if match:                               # same logical item both sides, never synced -> pair
-            b = match.pop(0)
-            new.record(str(uuid.uuid4()), a["id"], b["id"], content.content_key(a), a)
+            # prefer the candidate with IDENTICAL content: items sharing a (uri,username) but
+            # differing by password must not cross-pair, or every later run emits a phantom edit.
+            ck = content.content_key(a)
+            exact = next((x for x in match if content.content_key(x) == ck), None)
+            if exact is not None:
+                match.remove(exact)
+                new.record(str(uuid.uuid4()), a["id"], exact["id"], ck, a)   # identical -> silent pair
+            else:                               # same login, DIFFERENT content + no prior history:
+                b = match.pop(0)               # a real divergence -> gate it, never silently overwrite
+                winner = a if a.get("revisionDate", "") >= b.get("revisionDate", "") else b
+                tgt = "B" if winner is a else "A"
+                ops.append(_op("conflict", tgt, winner, destructive=True, guarded=_guard(winner)))
+                new.record(str(uuid.uuid4()), a["id"], b["id"], content.content_key(winner), winner)
         elif _in_org(a, org_b_fps):             # already in B's org -> don't re-create on B personal
             suppressed.append(_op("create", "B", a, note="present in B org"))
         else:
