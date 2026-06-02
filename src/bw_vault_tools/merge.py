@@ -70,7 +70,7 @@ def three_way(a_items, b_items, snap, org_a_fps=frozenset(), org_b_fps=frozenset
             seen_a.add(a["id"])
         if b:
             seen_b.add(b["id"])
-        base = tuple(e.content)
+        base = e.content                      # tuple, or None for an unresolved divergence
         if a and b:
             ca, cb = content.content_key(a), content.content_key(b)
             a_ed, b_ed = ca != base, cb != base
@@ -82,11 +82,11 @@ def three_way(a_items, b_items, snap, org_a_fps=frozenset(), org_b_fps=frozenset
             elif b_ed and not a_ed:
                 ops.append(_op("edit", "A", b, e.link_id, guarded=_guard(b)))
                 new.record(e.link_id, a["id"], b["id"], cb, b)
-            else:
+            else:                             # both differ from base -> gated conflict that PERSISTS
                 winner = a if a.get("revisionDate", "") >= b.get("revisionDate", "") else b
                 tgt = "B" if winner is a else "A"
                 ops.append(_op("conflict", tgt, winner, e.link_id, destructive=True, guarded=_guard(winner)))
-                new.record(e.link_id, a["id"], b["id"], content.content_key(winner), winner)
+                new.record(e.link_id, a["id"], b["id"], None, winner)   # None until a winner is applied
         elif a and not b:
             if content.content_key(a) == base:
                 ops.append(_op("delete", "A", a, e.link_id, destructive=True, guarded=_guard(a)))
@@ -121,8 +121,9 @@ def three_way(a_items, b_items, snap, org_a_fps=frozenset(), org_b_fps=frozenset
                 b = match.pop(0)               # a real divergence -> gate it, never silently overwrite
                 winner = a if a.get("revisionDate", "") >= b.get("revisionDate", "") else b
                 tgt = "B" if winner is a else "A"
-                ops.append(_op("conflict", tgt, winner, destructive=True, guarded=_guard(winner)))
-                new.record(str(uuid.uuid4()), a["id"], b["id"], content.content_key(winner), winner)
+                lid = str(uuid.uuid4())
+                ops.append(_op("conflict", tgt, winner, lid, destructive=True, guarded=_guard(winner)))
+                new.record(lid, a["id"], b["id"], None, winner)   # None until a winner is applied
         elif _in_org(a, org_b_fps):             # already in B's org -> don't re-create on B personal
             suppressed.append(_op("create", "B", a, note="present in B org"))
         else:

@@ -1,5 +1,36 @@
-from bw_vault_tools import checkpoint, cli_sync, keyprovider
+from bw_vault_tools import checkpoint, cli_sync, content, keyprovider, snapshot
 from tests import fixtures as fx
+
+
+def _kp():
+    return keyprovider.PassphraseProvider("s")
+
+
+def test_one_sided_edit_targets_the_other_vaults_own_id(tmp_path):
+    # A edited since last sync; pushing to B must edit B's item by B's id (not A's id).
+    a = fx.login("a1", uri="https://x.com", username="u", password="NEW")
+    b = fx.login("b1", uri="https://x.com", username="u", password="OLD")
+    snp = str(tmp_path / "S.enc")
+    s = snapshot.Snapshot(); s.record("L1", "a1", "b1", content.content_key(b), a)
+    snapshot.save(s, snp, _kp())
+    A = FakeProfile([a]); B = FakeProfile([b])
+    cli_sync.run_sync(A, B, snapshot_path=snp, apply=True, key_provider=_kp(),
+                      approver=lambda op: True, run_dir=str(tmp_path / "run"))
+    assert B.edited == ["b1"] and A.edited == []
+    assert B._items["b1"]["login"]["password"] == "NEW"      # B now carries A's content
+
+
+def test_divergent_conflict_resolves_then_converges(tmp_path):
+    a = fx.login("a1", uri="https://x.com", username="u", password="A", revision="2026-02-01T00:00:00.000Z")
+    b = fx.login("b1", uri="https://x.com", username="u", password="B", revision="2026-01-01T00:00:00.000Z")
+    snp = str(tmp_path / "S.enc")
+    A = FakeProfile([a]); B = FakeProfile([b])
+    cli_sync.run_sync(A, B, snapshot_path=snp, apply=True, key_provider=_kp(),
+                      approver=lambda op: True, run_dir=str(tmp_path / "r1"))
+    assert B._items["b1"]["login"]["password"] == "A"        # newer (A) won, applied to B
+    r2 = cli_sync.run_sync(A, B, snapshot_path=snp, apply=False, key_provider=_kp(),
+                           run_dir=str(tmp_path / "r2"))
+    assert r2.planned == 0                                    # resolved -> converges
 
 
 class FakeProfile:

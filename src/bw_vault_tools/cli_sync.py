@@ -2,7 +2,7 @@
 import sys
 from dataclasses import dataclass
 
-from . import (capabilities, checkpoint, identity, keyprovider, merge as mergemod, models,
+from . import (capabilities, checkpoint, content, identity, keyprovider, merge as mergemod, models,
                snapshot as snapmod)
 
 
@@ -56,13 +56,15 @@ def run_sync(prof_a, prof_b, snapshot_path, apply=True, key_provider=None,
     run = checkpoint.RunDir(run_dir, key_provider)
     run.write_baseline("A", exp_a)                    # encrypted pre-mutation snapshot of both
     run.write_baseline("B", exp_b)                    # vaults — automatic, no manual export needed
+    a_by = {i["id"]: i for i in a}
+    b_by = {i["id"]: i for i in b}
     for op in safe:
-        _apply(prof_a, prof_b, op, run, result.new_snapshot)
+        _apply(prof_a, prof_b, op, run, result.new_snapshot, a_by, b_by)
         res.applied += 1
     skipped = []
     for op in gated:
         if approver(op):
-            _apply(prof_a, prof_b, op, run, result.new_snapshot)
+            _apply(prof_a, prof_b, op, run, result.new_snapshot, a_by, b_by)
             res.applied += 1
         else:
             skipped.append(op)
@@ -73,24 +75,37 @@ def run_sync(prof_a, prof_b, snapshot_path, apply=True, key_provider=None,
     return res
 
 
-def _apply(prof_a, prof_b, op, run, new_snap):
-    prof = prof_a if op.target == "A" else prof_b
+def _apply(prof_a, prof_b, op, run, new_snap, a_by, b_by):
     if op.kind == "create":
+        prof = prof_a if op.target == "A" else prof_b
         created = prof.create(op.item)
         run.record(created["id"], {"action": "delete", "item_id": created["id"]})
         # capture the server-assigned id into the snapshot so the next run pairs correctly
-        if op.target == "B":
-            e = new_snap.by_a(op.item["id"])
-            if e:
+        e = new_snap.by_a(op.item["id"]) if op.target == "B" else new_snap.by_b(op.item["id"])
+        if e:
+            if op.target == "B":
                 e.id_on_b = created["id"]
-        else:
-            e = new_snap.by_b(op.item["id"])
-            if e:
+            else:
                 e.id_on_a = created["id"]
     elif op.kind in ("edit", "conflict"):
-        run.record(op.item["id"], {"action": "edit", "item_id": op.item["id"], "item": op.item})
-        prof.edit(op.item["id"], op.item)
+        # apply the SOURCE/winner content to the TARGET vault's own item (by the target's id),
+        # keeping the target's structural fields so a foreign folderId/revision can't break it.
+        e = new_snap.entries.get(op.link_id)
+        if not e:
+            return
+        prof, tid, cur = ((prof_a, e.id_on_a, a_by.get(e.id_on_a)) if op.target == "A"
+                          else (prof_b, e.id_on_b, b_by.get(e.id_on_b)))
+        if not tid or cur is None:
+            return
+        run.record(tid, {"action": "edit", "item_id": tid, "item": cur})   # undo: restore target as-was
+        prof.edit(tid, {**op.item, "id": tid, "folderId": cur.get("folderId"),
+                        "organizationId": cur.get("organizationId"),
+                        "collectionIds": cur.get("collectionIds"),
+                        "revisionDate": cur.get("revisionDate")})
+        if op.kind == "conflict":
+            e.content = content.content_key(op.item)   # winner applied -> baseline agreed -> converges
     elif op.kind == "delete":
+        prof = prof_a if op.target == "A" else prof_b
         run.record(op.item["id"], {"action": "restore", "item_id": op.item["id"]})
         prof.delete(op.item["id"])
     # ambiguous -> default keep: no write (flagged only)

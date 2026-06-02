@@ -112,6 +112,18 @@ def test_divergent_first_pairing_is_gated_conflict_not_silent_overwrite():
     assert [(o.kind, o.target, o.destructive) for o in r.ops] == [("conflict", "B", True)]
 
 
+def test_divergence_persists_as_conflict_across_runs():
+    # an unresolved divergence must stay a gated conflict every run (base=None), never silently
+    # flip to a one-sided auto-edit once the snapshot exists.
+    a = fx.login("a1", uri="https://x.com", username="u", password="A", revision="2026-02-01T00:00:00.000Z")
+    b = fx.login("b1", uri="https://x.com", username="u", password="B", revision="2026-01-01T00:00:00.000Z")
+    r1 = merge.three_way([a], [b], snapshot.Snapshot())
+    assert [o.kind for o in r1.ops] == ["conflict"]
+    r2 = merge.three_way([a], [b], r1.new_snapshot)
+    assert [o.kind for o in r2.ops] == ["conflict"]      # NOT "edit"
+    assert r1.new_snapshot.entries[r1.ops[0].link_id].content is None
+
+
 def test_passkey_guarded_never_destructive():
     a = fx.passkey_login("a1", uri="https://x.com", username="u", password="p")
     r = merge.three_way([a], [], snapshot.Snapshot())
