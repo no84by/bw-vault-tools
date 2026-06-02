@@ -90,12 +90,19 @@ def _merge_pair(a, b, policy):
 
     pw, c1 = scalar("password")
     user, c2 = scalar("username")
-    totp, c3 = scalar("totp")
+    # TOTP: a login holds ONE seed, so keep the winner's active (autofill) but never drop the
+    # other — a differing seed is preserved as a custom field. So TOTP is carried, never gated.
+    ta, tb = La.get("totp"), Lb.get("totp")
+    totp = Lw.get("totp") or ta or tb
+    fields = _union_fields(a, b)
+    loser_totp = tb if winner is a else ta
+    if loser_totp and loser_totp != totp:
+        fields = fields + [{"name": "totp (other vault)", "value": loser_totp, "type": 1}]
     merged = dict(winner)
     merged["notes"] = _union_notes(a, b)
-    merged["fields"] = _union_fields(a, b)
+    merged["fields"] = fields
     merged["login"] = {**Lw, "uris": _union_uris(a, b), "password": pw, "username": user, "totp": totp}
-    return merged, (c1 or c2 or c3)
+    return merged, (c1 or c2)
 
 
 def _pair_key(item):

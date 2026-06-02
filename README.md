@@ -14,7 +14,12 @@ official `bw` CLI:
   plan-then-approve, journalled undo).
 - **`bw-sync`** *(implemented)* — stateful, approval-gated, reversible **two-way sync** between
   two vaults. A true 3-way merge against a persisted, encrypted last-synced snapshot (adds +
-  edits + deletes, newest-wins conflicts, passkey-guarded, journalled undo).
+  edits + lossless field-union merges + deletes, configurable conflict policy, passkey-guarded,
+  journalled undo).
+- **`bw-totp`** *(implemented)* — import **Google Authenticator** TOTP seeds into a vault. Decode
+  an export screenshot (or paste the `otpauth-migration://` URI), match each account to a login,
+  and set the seed where missing — skipping identical ones, never overwriting a different one
+  (duplicates instead), surfacing ambiguous matches for you to resolve. Journalled undo.
 
 `bw-dedup` and `bw-sync` are **org-aware**: they read all your organizations read-only. Dedup
 clears personal logins that already live in an org (orgs are never written). An optional
@@ -24,9 +29,9 @@ org. The tools are otherwise **personal-vault-scoped for writes** — they never
 items.
 
 Together with [`bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup),
-these form one family at three automation levels: **Manual** (the file-based cleaner), **CLI**
-(`bw-dedup`/`bw-import`), **Auto** (`bw-sync`). Same dedup core (`identity.py`). All run entirely
-on your machine — no cloud service, no daemon, no telemetry.
+these form one family: **Manual** (the file-based cleaner), **CLI** (`bw-dedup`/`bw-import`/
+`bw-totp`), **Auto** (`bw-sync`). Same dedup core (`identity.py`). All run entirely on your
+machine — no cloud service, no daemon, no telemetry.
 
 ## Which tool should I use?
 
@@ -72,6 +77,10 @@ Runs on **Linux, macOS, and Windows**.
   On Windows use the **native `bw.exe`** (not the npm `bw.cmd` shim).
 - Scratch/secrets are kept in RAM (`/dev/shm`) on Linux and in the OS temp dir on macOS/Windows,
   shredded on exit. No POSIX-only requirement.
+- **`bw-totp` only**, to decode an export *image*: install the extra — `pip install
+  "bw-vault-tools[totp]"` (cross-platform; bundles zbar on Windows, uses system `libzbar` on
+  Linux/macOS — `dnf/apt/brew install zbar`). Or skip it entirely and pass the
+  `otpauth-migration://` text via `--uri` (no decoder needed, works on every OS).
 
 ## Install
 
@@ -150,16 +159,37 @@ bw-sync --appdata-a "<DIR_A>" --appdata-b "<DIR_B>" --snapshot "<SNAPSHOT_PATH>"
 bw-sync --appdata-a "<DIR_A>" --appdata-b "<DIR_B>" --snapshot "<SNAPSHOT_PATH>" --apply   # apply
 ```
 First run pairs identical items and creates the divergent ones both ways. Later runs use the
-snapshot for a true 3-way merge (edits + deletes + newest-wins conflicts), all gated and
-reversible. Every `--apply` automatically writes an encrypted pre-mutation baseline export of
-**both** vaults before touching anything, on top of the per-op `--undo` journal — no manual
-backup step required.
+snapshot for a true 3-way merge (one-sided edits + lossless field-union merges + deletes), all
+gated and reversible. A genuine divergence unions notes/custom fields/URIs/TOTP from both sides
+and gates only an un-mergeable password clash. Conflict direction is configurable with
+`--conflict newest|a-wins|b-wins` (default `newest`); `a-wins`/`b-wins` make one vault canonical.
+Every `--apply` automatically writes an encrypted pre-mutation baseline export of **both** vaults
+before touching anything, on top of the per-op `--undo` journal — no manual backup step required.
+
+### `bw-totp` — import Google Authenticator seeds
+
+```bash
+# In Google Authenticator: Transfer accounts -> Export accounts -> screenshot each QR.
+bw-totp --vault myvault --appdata "<PROFILE_DIR>" --image qr1.png --image qr2.png          # plan
+bw-totp --vault myvault --appdata "<PROFILE_DIR>" --image qr1.png --apply                  # apply
+bw-totp --vault myvault --appdata "<PROFILE_DIR>" --uri 'otpauth-migration://offline?data=...'  # no decoder
+bw-totp --vault myvault --appdata "<PROFILE_DIR>" --undo <RUN_DIR>
+```
+Matches each account to a login by service + username. **Sets** the seed only where one is
+missing, **skips** identical ones, **never overwrites** a different seed (creates a duplicate
+instead), and **asks** (interactively) for anything ambiguous rather than guessing. Pure decode +
+match; the seeds never leave your machine.
 
 ## Credit
 
 The deduplication algorithm originates in
 [`no84by/bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup) (MIT) and
-lives on here in `identity.py`. See [`NOTICE`](NOTICE).
+lives on here in `identity.py`. The Google Authenticator export decoder parses the
+`otpauth-migration` `MigrationPayload` protobuf
+([google-authenticator-android](https://github.com/google/google-authenticator-android),
+Apache-2.0; format per the community reverse-engineering, notably Alexander Bakker's writeup), and
+decodes the QR via [zbar](https://github.com/mchehab/zbar) /
+[pyzbar](https://github.com/NaturalHistoryMuseum/pyzbar). See [`NOTICE`](NOTICE).
 
 ## Disclaimer
 
