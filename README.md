@@ -161,6 +161,21 @@ The deduplication algorithm originates in
 [`no84by/bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup) (MIT) and
 lives on here in `identity.py`. See [`NOTICE`](NOTICE).
 
+## Disclaimer
+
+These tools modify a live password vault. They are provided **AS IS**, with **no support**, **no
+guarantees**, and **no warranty** (see [`LICENSE`](LICENSE)). **You use them at your own risk.**
+
+Although every `--apply` is plan-first, approval-gated, journalled, and reversible (soft-delete
+trash + `--undo` + an encrypted pre-mutation baseline of each vault), you remain responsible for:
+
+- Taking your own `bw export` backup of every vault before the first `--apply`.
+- Reviewing the `--plan` output before approving any change.
+- Verifying your vault(s) behave as expected afterwards.
+
+Always test with non-critical data if you're unsure. When in doubt, reverse the run with `--undo`
+or restore items from the 30-day trash.
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE).

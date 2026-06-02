@@ -90,6 +90,28 @@ def test_deleted_one_side_edited_other_is_ambiguous():
     assert r.ops[0].kind == "ambiguous" and r.ops[0].destructive is True
 
 
+def test_duplicate_pairkey_pairs_by_content_and_converges():
+    # two logins share (uri,username) but differ by password; both vaults hold both. First-run
+    # pairing must match by CONTENT (not list order) or it cross-pairs and emits phantom edits forever.
+    a1 = fx.login("a1", uri="https://x.com", username="u", password="P1")
+    a2 = fx.login("a2", uri="https://x.com", username="u", password="P2")
+    b2 = fx.login("b2", uri="https://x.com", username="u", password="P2")  # reversed order vs A
+    b1 = fx.login("b1", uri="https://x.com", username="u", password="P1")
+    r1 = merge.three_way([a1, a2], [b2, b1], snapshot.Snapshot())          # first run: establish pairing
+    assert {(e.id_on_a, e.id_on_b) for e in r1.new_snapshot.entries.values()} == {("a1", "b1"), ("a2", "b2")}
+    r2 = merge.three_way([a1, a2], [b2, b1], r1.new_snapshot)              # second run must converge
+    assert r2.ops == []
+
+
+def test_divergent_first_pairing_is_gated_conflict_not_silent_overwrite():
+    # same uri+username, DIFFERENT password, NO prior snapshot -> a real divergence: gate it as a
+    # conflict (newest-wins proposed), never silently baseline one side and auto-push over the other.
+    a = fx.login("a1", uri="https://x.com", username="u", password="A-pw", revision="2026-02-01T00:00:00.000Z")
+    b = fx.login("b1", uri="https://x.com", username="u", password="B-pw", revision="2026-01-01T00:00:00.000Z")
+    r = merge.three_way([a], [b], snapshot.Snapshot())
+    assert [(o.kind, o.target, o.destructive) for o in r.ops] == [("conflict", "B", True)]
+
+
 def test_passkey_guarded_never_destructive():
     a = fx.passkey_login("a1", uri="https://x.com", username="u", password="p")
     r = merge.three_way([a], [], snapshot.Snapshot())
