@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bw-vault-tools"
-version = "0.0.0"
+version = "0.1.0"
 description = "Local CLI tools for Bitwarden/Vaultwarden: in-place dedup, reversible two-way sync, browser-password and Google-Authenticator import, driven through the bw CLI."
 readme = "README.md"
 requires-python = ">=3.11"
