@@ -63,14 +63,31 @@ def test_one_sided_edit_pushes_safe():
     assert op.kind == "edit" and op.target == "B" and op.destructive is False
 
 
-def test_both_edited_is_conflict_gated():
+def test_both_edited_scalar_clash_is_gated_merge():
     base = fx.login("a1", uri="https://x.com", username="u", password="BASE")
     b0 = fx.login("b1", uri="https://x.com", username="u", password="BASE")
     s = _snap([("L1", base, b0)])
     a1 = fx.login("a1", uri="https://x.com", username="u", password="A-NEW")
     b1 = fx.login("b1", uri="https://x.com", username="u", password="B-NEW")
     r = merge.three_way([a1], [b1], s)
-    assert r.ops[0].kind == "conflict" and r.ops[0].destructive is True
+    assert r.ops[0].kind == "merge" and r.ops[0].destructive is True   # passwords clash -> gated
+
+
+def test_merge_unions_notes_fields_uris_and_is_safe_when_no_scalar_clash():
+    # A and B share the password (no scalar clash) but each holds unique notes / custom fields /
+    # URIs. A true bidirectional merge keeps ALL of them, and applies WITHOUT a gate (lossless).
+    a = fx.login("a1", uri="https://x.com", username="u", password="same", notes="from-A")
+    a["login"]["uris"].append({"uri": "https://a-only.com"})
+    a["fields"] = [{"name": "recovery", "value": "AAA", "type": 1}]
+    b = fx.login("b1", uri="https://x.com", username="u", password="same", notes="from-B")
+    b["login"]["uris"].append({"uri": "https://b-only.com"})
+    b["fields"] = [{"name": "pin", "value": "BBB", "type": 0}]
+    r = merge.three_way([a], [b], snapshot.Snapshot())
+    assert [o.kind for o in r.ops] == ["merge"] and r.ops[0].destructive is False   # no clash -> safe
+    m = r.ops[0].item
+    assert "from-A" in m["notes"] and "from-B" in m["notes"]
+    assert {"recovery", "pin"} <= {f["name"] for f in m["fields"]}
+    assert {"https://x.com", "https://a-only.com", "https://b-only.com"} <= {u["uri"] for u in m["login"]["uris"]}
 
 
 def test_deleted_on_b_deletes_on_a_gated():
@@ -103,33 +120,33 @@ def test_duplicate_pairkey_pairs_by_content_and_converges():
     assert r2.ops == []
 
 
-def test_divergent_first_pairing_is_gated_conflict_not_silent_overwrite():
-    # same uri+username, DIFFERENT password, NO prior snapshot -> a real divergence: gate it as a
-    # conflict (newest-wins proposed), never silently baseline one side and auto-push over the other.
+def test_divergent_first_pairing_is_gated_merge_not_silent_overwrite():
+    # same uri+username, DIFFERENT password, NO prior snapshot -> a real divergence: a gated merge
+    # (scalar clash), never silently baseline one side and auto-push over the other.
     a = fx.login("a1", uri="https://x.com", username="u", password="A-pw", revision="2026-02-01T00:00:00.000Z")
     b = fx.login("b1", uri="https://x.com", username="u", password="B-pw", revision="2026-01-01T00:00:00.000Z")
     r = merge.three_way([a], [b], snapshot.Snapshot())
-    assert [(o.kind, o.target, o.destructive) for o in r.ops] == [("conflict", "B", True)]
+    assert [(o.kind, o.destructive) for o in r.ops] == [("merge", True)]
 
 
-def test_conflict_policy_a_wins_overrides_newest():
-    # B is newer, so 'newest' would push B->A; 'a-wins' must keep A canonical and push A->B instead.
+def test_conflict_policy_picks_winners_scalar_in_the_merge():
+    # B is newer; 'newest' takes B's password into the merge, 'a-wins' takes A's. (Notes/fields/uris
+    # union regardless; only the scalar password is policy-decided.)
     a = fx.login("a1", uri="https://x.com", username="u", password="A", revision="2026-01-01T00:00:00.000Z")
     b = fx.login("b1", uri="https://x.com", username="u", password="B", revision="2026-02-01T00:00:00.000Z")
-    assert merge.three_way([a], [b], snapshot.Snapshot(), conflict_policy="newest").ops[0].target == "A"
-    r = merge.three_way([a], [b], snapshot.Snapshot(), conflict_policy="a-wins")
-    assert r.ops[0].kind == "conflict" and r.ops[0].target == "B" and r.ops[0].item["id"] == "a1"
+    assert merge.three_way([a], [b], snapshot.Snapshot(), conflict_policy="newest").ops[0].item["login"]["password"] == "B"
+    assert merge.three_way([a], [b], snapshot.Snapshot(), conflict_policy="a-wins").ops[0].item["login"]["password"] == "A"
 
 
-def test_divergence_persists_as_conflict_across_runs():
-    # an unresolved divergence must stay a gated conflict every run (base=None), never silently
+def test_divergence_persists_as_gated_merge_across_runs():
+    # an unresolved scalar divergence must stay a gated merge every run (base=None), never silently
     # flip to a one-sided auto-edit once the snapshot exists.
     a = fx.login("a1", uri="https://x.com", username="u", password="A", revision="2026-02-01T00:00:00.000Z")
     b = fx.login("b1", uri="https://x.com", username="u", password="B", revision="2026-01-01T00:00:00.000Z")
     r1 = merge.three_way([a], [b], snapshot.Snapshot())
-    assert [o.kind for o in r1.ops] == ["conflict"]
+    assert [o.kind for o in r1.ops] == ["merge"]
     r2 = merge.three_way([a], [b], r1.new_snapshot)
-    assert [o.kind for o in r2.ops] == ["conflict"]      # NOT "edit"
+    assert [o.kind for o in r2.ops] == ["merge"]         # NOT "edit"
     assert r1.new_snapshot.entries[r1.ops[0].link_id].content is None
 
 
