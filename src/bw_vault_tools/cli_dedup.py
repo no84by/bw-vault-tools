@@ -29,6 +29,18 @@ def _merged_notes(group_items):
     return "\n\n".join(notes) if notes else None
 
 
+def _merged_fields(group_items):
+    """Union of custom fields across a merge group, dedup by (name, value, type)."""
+    out, seen = [], set()
+    for e in group_items:
+        for f in (e.get("fields") or []):
+            k = (f.get("name"), f.get("value"), f.get("type"))
+            if k not in seen:
+                seen.add(k)
+                out.append(f)
+    return out
+
+
 def _apply_destructive(prof, op, by_id, run):
     if isinstance(op, (planmod.DeleteOp, planmod.ClearPersonalDupOp)):
         if op.item_id in run.completed_ids:
@@ -39,9 +51,15 @@ def _apply_destructive(prof, op, by_id, run):
         keep = dict(by_id[op.keep_id])
         keep["login"] = dict(keep["login"])
         keep["login"]["uris"] = [{"uri": u, "match": None} for u in op.uris]
-        merged = _merged_notes([by_id[op.keep_id]] + [by_id[d] for d in op.drop_ids])
+        group = [by_id[op.keep_id]] + [by_id[d] for d in op.drop_ids]
+        merged = _merged_notes(group)
         if merged:
             keep["notes"] = merged
+        keep_totp = keep["login"].get("totp")         # keep the kept item's 2FA seed active, but
+        extra_totps = [{"name": "totp (merged dup)", "value": t, "type": 1}   # never drop a dup's
+                       for t in dict.fromkeys((e.get("login") or {}).get("totp") for e in group)
+                       if t and t != keep_totp]
+        keep["fields"] = _merged_fields(group) + extra_totps   # keep every side's custom fields
         if op.keep_id not in run.completed_ids:
             run.record(op.keep_id, op.inverse())
             prof.edit(op.keep_id, keep)

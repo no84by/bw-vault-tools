@@ -6,3 +6,13 @@ This product includes software derived from bitwarden-vault-cleanup
 licensed under the MIT License. The deduplication algorithm (URI normalization,
 content fingerprinting, group-by-(uri,username,password), and best-entry
 scoring) in src/bw_vault_tools/identity.py originates there.
+
+The Google Authenticator export decoder (src/bw_vault_tools/totp_source.py)
+parses the `otpauth-migration` payload, which is Google Authenticator's
+`MigrationPayload` protobuf (https://github.com/google/google-authenticator-android,
+Apache License 2.0). The field layout follows the community reverse-engineering of
+that format, notably Alexander Bakker's writeup "Decoding the Google Authenticator
+export QR code". QR-image decoding is provided at runtime by zbar
+(https://github.com/mchehab/zbar, LGPL-2.1) via the pyzbar binding
+(https://github.com/NaturalHistoryMuseum/pyzbar, MIT) or the zbarimg CLI — these are
+optional, separately-installed dependencies, not bundled or modified here.

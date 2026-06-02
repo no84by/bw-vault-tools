@@ -120,6 +120,20 @@ def test_duplicate_pairkey_pairs_by_content_and_converges():
     assert r2.ops == []
 
 
+def test_merge_preserves_both_totp_seeds_losslessly():
+    # two different TOTP seeds for the same login: keep the winner's active, preserve the other in
+    # a custom field — never lost, and TOTP alone does not gate.
+    a = fx.login("a1", uri="https://x.com", username="u", password="same")
+    a["login"]["totp"] = "SEED-A"
+    b = fx.login("b1", uri="https://x.com", username="u", password="same")
+    b["login"]["totp"] = "SEED-B"
+    r = merge.three_way([a], [b], snapshot.Snapshot())
+    assert [o.kind for o in r.ops] == ["merge"] and r.ops[0].destructive is False
+    m = r.ops[0].item
+    seeds = {m["login"]["totp"]} | {f["value"] for f in m["fields"] if "totp" in f["name"]}
+    assert {"SEED-A", "SEED-B"} <= seeds
+
+
 def test_divergent_first_pairing_is_gated_merge_not_silent_overwrite():
     # same uri+username, DIFFERENT password, NO prior snapshot -> a real divergence: a gated merge
     # (scalar clash), never silently baseline one side and auto-push over the other.

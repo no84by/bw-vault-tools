@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bw-vault-tools"
 version = "0.0.0"
-description = "Local CLI tools for Bitwarden/Vaultwarden: in-place dedup and reversible two-way sync, driven through the bw CLI."
+description = "Local CLI tools for Bitwarden/Vaultwarden: in-place dedup, reversible two-way sync, browser-password and Google-Authenticator import, driven through the bw CLI."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "no84by" }]
-keywords = ["bitwarden", "vaultwarden", "dedup", "sync", "cli"]
+keywords = ["bitwarden", "vaultwarden", "dedup", "sync", "totp", "cli"]
 
 # Single runtime dependency (the passphrase key provider). Installed automatically
 # by the self-bootstrap on first run; pinned here for reproducible environments.
@@ -18,11 +18,16 @@ dependencies = ["cryptography>=42,<45"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
+# bw-totp decodes a Google Authenticator export QR from an image. pyzbar is cross-platform and
+# BUNDLES the zbar library on Windows (so `pip install` is enough there); on Linux/macOS it uses
+# the system libzbar (dnf/apt/brew install zbar). Not needed if you pass the migration URI via --uri.
+totp = ["pyzbar>=0.1.9", "pillow>=10"]
 
 [project.scripts]
 bw-dedup = "bw_vault_tools.cli_dedup:main"
 bw-sync = "bw_vault_tools.cli_sync:main"
 bw-import = "bw_vault_tools.cli_import:main"
+bw-totp = "bw_vault_tools.cli_totp:main"
 
 [project.urls]
 Homepage = "https://github.com/no84by/bw-vault-tools"
