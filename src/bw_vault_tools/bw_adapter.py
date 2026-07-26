@@ -6,11 +6,15 @@ import subprocess
 
 
 def _make_runner(appdata_dir: str, session: str):
-    """The single place env + --session are injected."""
+    """The single place the app-data dir + session are injected.
+
+    The session travels in the ENVIRONMENT only. It used to also be appended to argv as
+    `--session <token>`, which was redundant (bw reads BW_SESSION) and leaked the token to any
+    local user via `ps`.
+    """
     def run(args: list) -> str:
         env = dict(os.environ, BITWARDENCLI_APPDATA_DIR=appdata_dir, BW_SESSION=session)
-        full = args + ["--session", session] if args[:1] == ["bw"] else args
-        return subprocess.run(full, capture_output=True, text=True, check=True, env=env).stdout
+        return subprocess.run(args, capture_output=True, text=True, check=True, env=env).stdout
     return run
 
 

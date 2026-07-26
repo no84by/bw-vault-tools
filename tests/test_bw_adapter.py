@@ -71,7 +71,7 @@ def test_restore_calls_bw_restore():
     assert r.calls[-1] == ["bw", "restore", "item", "a"]
 
 
-def test_default_runner_injects_env_and_session(monkeypatch):
+def test_default_runner_injects_session_via_env_and_never_via_argv(monkeypatch):
     captured = {}
 
     def fake_run(cmd, capture_output, text, check, env, input=None):
@@ -86,7 +86,10 @@ def test_default_runner_injects_env_and_session(monkeypatch):
     prof.edit("a", {"id": "a"})
     assert captured["env"]["BITWARDENCLI_APPDATA_DIR"] == "/dev/shm/A"
     assert captured["env"]["BW_SESSION"] == "SESS"
-    assert captured["cmd"][-2:] == ["--session", "SESS"]
+    # The session must NEVER reach argv: it would be readable by any local user via `ps`.
+    assert "--session" not in captured["cmd"]
+    assert "SESS" not in captured["cmd"]
+    assert captured["cmd"][:3] == ["bw", "edit", "item"]
 
 
 def test_list_organizations_parses():
