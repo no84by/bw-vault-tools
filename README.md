@@ -3,20 +3,20 @@
 Local, unmanaged command-line tools for Bitwarden / Vaultwarden vaults, driven through the
 official `bw` CLI:
 
-- **`bw-dedup`** — in-place single-vault deduplicator. Reads a live vault via
+- **`bw-dedup`** *(implemented)* — in-place single-vault deduplicator. Reads a live vault via
   `bw export`, computes a plan, and applies minimal per-item `bw edit`/`bw delete` deltas. Never
   purge+reimport. The advanced successor to
   [`bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup) (still
   maintained as the simple file-based tool).
-- **`bw-import`** — aggregate passwords from your installed browsers into the
+- **`bw-import`** *(implemented)* — aggregate passwords from your installed browsers into the
   live vault. Detects browsers (presence-only — never reads their stores), guides each browser's
   own CSV export, and `bw create`s only the logins not already present (additive-only,
   plan-then-approve, journalled undo).
-- **`bw-sync`** — stateful, approval-gated, reversible **two-way sync** between
+- **`bw-sync`** *(implemented)* — stateful, approval-gated, reversible **two-way sync** between
   two vaults. A true 3-way merge against a persisted, encrypted last-synced snapshot (adds +
   edits + lossless field-union merges + deletes, configurable conflict policy, passkey-guarded,
   journalled undo).
-- **`bw-totp`** — import **Google Authenticator** TOTP seeds into a vault. Decode
+- **`bw-totp`** *(implemented)* — import **Google Authenticator** TOTP seeds into a vault. Decode
   an export screenshot (or paste the `otpauth-migration://` URI), match each account to a login,
   and set the seed where missing — skipping identical ones, never overwriting a different one
   (duplicates instead), surfacing ambiguous matches for you to resolve. Journalled undo.
@@ -200,12 +200,4 @@ or restore items from the 30-day trash.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
-
-You are free to:
-- Use this script in personal or commercial projects
-- Modify and redistribute it
-- Adapt it to your needs
-
-The license also includes a liability disclaimer:
-**You use this script at your own risk.**
+MIT. See [`LICENSE`](LICENSE).
