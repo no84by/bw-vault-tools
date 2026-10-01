@@ -2,14 +2,16 @@ import base64
 import json
 import subprocess
 
+import pytest
+
 from bw_vault_tools import bw_adapter
 
 
 def test_create_strips_cross_vault_scoped_fields():
     captured = {}
-    def runner(args):
+    def runner(args, input=None):
         if args[:2] == ["bw", "create"]:
-            captured["item"] = json.loads(base64.b64decode(args[3]))
+            captured["item"] = json.loads(base64.b64decode(input))
             return json.dumps({"id": "new"})
         return ""
     prof = bw_adapter.BwProfile("/dev/shm/A", "S", runner=runner)
@@ -21,12 +23,11 @@ def test_create_strips_cross_vault_scoped_fields():
 
 def test_edit_refreshes_revisiondate_on_stale_cipher():
     state = {"edits": 0}
-    def runner(args):
+    def runner(args, input=None):
         if args[:2] == ["bw", "edit"]:
             state["edits"] += 1
             if state["edits"] == 1:
-                raise subprocess.CalledProcessError(
-                    1, args, stderr="The client copy of this cipher is out of date. Resync and retry.")
+                raise bw_adapter.BwError("edit item", "a", 1, "out of date", out_of_date=True)
             return json.dumps({"id": "a"})
         if args[:2] == ["bw", "get"]:
             return json.dumps({"id": "a", "revisionDate": "2030-01-01T00:00:00.000Z"})
@@ -40,7 +41,7 @@ class FakeRunner:
     def __init__(self):
         self.calls = []
 
-    def __call__(self, args):
+    def __call__(self, args, input=None):
         self.calls.append(args)
         if args[:2] == ["bw", "export"]:
             return json.dumps({"items": [{"id": "a"}]})
@@ -112,3 +113,77 @@ def test_list_items_parses():
     prof = bw_adapter.BwProfile("/dev/shm/A", "S", runner=runner)
     items = prof.list_items()
     assert {i["id"] for i in items} == {"a", "b"}
+
+
+# --- secrets never on argv / never in error text -------------------------------------------------
+SECRET = "hunter2-SECRET-MARKER-xyz"
+
+
+def _capture_default_runner(monkeypatch, fail_stderr=None):
+    calls = []
+
+    def fake_run(cmd, capture_output, text, check, env, input=None):
+        calls.append({"cmd": list(cmd), "input": input})
+        if fail_stderr is not None:
+            raise subprocess.CalledProcessError(1, cmd, output="", stderr=fail_stderr)
+
+        class R:
+            stdout = "{}"
+        return R()
+
+    monkeypatch.setattr(bw_adapter.subprocess, "run", fake_run)
+    return calls
+
+
+def test_edit_and_create_pass_item_on_stdin_never_argv(monkeypatch):
+    calls = _capture_default_runner(monkeypatch)
+    item = {"id": "a", "name": "x", "login": {"password": SECRET}}
+    prof = bw_adapter.BwProfile("/dev/shm/A", "S")
+    prof.edit("a", item)
+    prof.create(item)
+    enc = base64.b64encode(json.dumps(item).encode()).decode()
+    for c in calls:
+        joined = " ".join(c["cmd"])
+        assert SECRET not in joined and enc not in c["cmd"]
+        assert all(len(a) < 60 for a in c["cmd"]), "a long blob is on argv"
+    assert calls[0]["cmd"] == ["bw", "edit", "item", "a"]
+    assert calls[1]["cmd"] == ["bw", "create", "item"]
+    for c in calls:                                      # the encoded item travels on stdin
+        assert SECRET in base64.b64decode(c["input"]).decode()
+
+
+def test_failing_bw_call_error_text_has_no_secret(monkeypatch):
+    echoed = base64.b64encode(json.dumps({"login": {"password": SECRET}}).encode()).decode()
+    _capture_default_runner(monkeypatch, fail_stderr=f"Error: bad payload {echoed} {SECRET} {{\"password\": \"{SECRET}\"}}")
+    prof = bw_adapter.BwProfile("/dev/shm/A", "S")
+    with pytest.raises(bw_adapter.BwError) as ei:
+        prof.edit("58eed737-id", {"id": "a", "login": {"password": SECRET}})
+    text = str(ei.value) + repr(ei.value)
+    import traceback
+    text += "".join(traceback.format_exception(ei.value))
+    assert SECRET not in text and echoed not in text
+    assert "edit" in text and "58eed737-id" in text and "exit" in text
+    assert ei.value.returncode == 1
+
+
+def test_bw_error_caps_stderr(monkeypatch):
+    _capture_default_runner(monkeypatch, fail_stderr="e" * 5000)
+    with pytest.raises(bw_adapter.BwError) as ei:
+        bw_adapter.BwProfile("/dev/shm/A", "S").delete("a")
+    assert len(str(ei.value)) < 600
+
+
+def test_stale_cipher_retry_still_works_via_default_runner(monkeypatch):
+    n = {"edit": 0}
+
+    def fake_run(cmd, capture_output, text, check, env, input=None):
+        class R:
+            stdout = json.dumps({"id": "a", "revisionDate": "2030"})
+        if cmd[:2] == ["bw", "edit"]:
+            n["edit"] += 1
+            if n["edit"] == 1:
+                raise subprocess.CalledProcessError(1, cmd, stderr="cipher is out of date")
+        return R()
+    monkeypatch.setattr(bw_adapter.subprocess, "run", fake_run)
+    assert bw_adapter.BwProfile("/dev/shm/A", "S").edit("a", {"id": "a"})["id"] == "a"
+    assert n["edit"] == 2
