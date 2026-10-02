@@ -187,3 +187,25 @@ def test_stale_cipher_retry_still_works_via_default_runner(monkeypatch):
     monkeypatch.setattr(bw_adapter.subprocess, "run", fake_run)
     assert bw_adapter.BwProfile("/dev/shm/A", "S").edit("a", {"id": "a"})["id"] == "a"
     assert n["edit"] == 2
+
+
+def test_bw_error_verb_and_id_ignore_flags(monkeypatch):
+    # `bw export --format json` used to report verb "export --format" and item id "json".
+    _capture_default_runner(monkeypatch, fail_stderr="boom")
+    run = bw_adapter._make_runner("/dev/shm/A", "S")
+    for args, want in ((["bw", "export", "--format", "json"], ("export", None)),
+                       (["bw", "list", "items", "--search", "x"], ("list items", None)),
+                       (["bw", "get", "item", "abc-id"], ("get item", "abc-id"))):
+        with pytest.raises(bw_adapter.BwError) as ei:
+            run(args)
+        assert (ei.value.verb, ei.value.item_id) == want
+
+
+def test_multiline_leaf_is_redacted_after_whitespace_normalisation(monkeypatch):
+    notes = "line one secret\n  line two SECRETNOTE"
+    _capture_default_runner(monkeypatch, fail_stderr=f"Error: rejected notes {notes} end")
+    prof = bw_adapter.BwProfile("/dev/shm/A", "S")
+    with pytest.raises(bw_adapter.BwError) as ei:
+        prof.edit("a", {"id": "a", "notes": notes})
+    # (the [REDACTED] marker itself is later rewritten to [JSON] by the bracket pattern)
+    assert "SECRETNOTE" not in str(ei.value) and "line two" not in str(ei.value)

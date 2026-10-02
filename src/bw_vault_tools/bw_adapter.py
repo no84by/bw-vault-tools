@@ -23,6 +23,7 @@ class BwError(RuntimeError):
 _B64 = re.compile(r"[A-Za-z0-9+/=_-]{24,}")
 _JSON_BLOB = re.compile(r"\{[^{}]*\}|\[[^\[\]]*\]")
 _STDERR_CAP = 200
+_ID_VERBS = {"get", "edit", "delete", "restore"}   # verbs whose 4th argv slot is an item id
 
 
 def _leaf_strings(obj, out):
@@ -43,6 +44,9 @@ def _redact(text: str, stdin_item: str = "") -> str:
         try:
             leaves = set()
             _leaf_strings(json.loads(base64.b64decode(stdin_item)), leaves)
+            # `text` is whitespace-normalised above, so a multi-line notes value only matches
+            # once it is normalised the same way.
+            leaves = {" ".join(leaf.split()) for leaf in leaves} - {""}
             for leaf in sorted(leaves, key=len, reverse=True):
                 text = text.replace(leaf, "[REDACTED]")
         except Exception:
@@ -67,8 +71,11 @@ def _make_runner(appdata_dir: str, session: str):
                                   input=input).stdout
         except subprocess.CalledProcessError as e:
             raw = e.stderr or ""
-            verb = " ".join(args[1:3]) if len(args) > 2 and args[2] == "item" else " ".join(args[1:3])
-            item_id = args[3] if len(args) > 3 and not args[3].startswith("-") else None
+            # "edit item", "list items", "export" -- never a flag or its value (`export --format json`)
+            obj = args[2] if len(args) > 2 and not args[2].startswith("-") else None
+            verb = args[1] + (f" {obj}" if obj else "")
+            item_id = (args[3] if obj and args[1] in _ID_VERBS and len(args) > 3
+                       and not args[3].startswith("-") else None)
             raise BwError(verb, item_id, e.returncode, _redact(raw, input or ""),
                           out_of_date="out of date" in raw) from None
     return run
