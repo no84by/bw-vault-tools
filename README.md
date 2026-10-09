@@ -200,4 +200,12 @@ or restore items from the 30-day trash.
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
+
+You are free to:
+- Use this script in personal or commercial projects
+- Modify and redistribute it
+- Adapt it to your needs
+
+The license also includes a liability disclaimer:
+**You use this script at your own risk.**
