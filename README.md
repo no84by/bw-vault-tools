@@ -156,7 +156,7 @@ gated and reversible. A genuine divergence unions notes/custom fields/URIs/TOTP 
 and gates only an un-mergeable password clash. Conflict direction is configurable with
 `--conflict newest|a-wins|b-wins` (default `newest`); `a-wins`/`b-wins` make one vault canonical.
 Every `--apply` automatically writes an encrypted pre-mutation baseline export of **both** vaults
-before touching anything, on top of the per-op `--undo` journal — no manual backup step required.
+before touching anything, on top of the per-op `--undo` journal — no manual backup step required. That baseline is a *per-run* reversibility artifact (kept inside each `runs/<tool>-<ts>/` dir, used by `--undo`). For the **unattended cascade** (`bw-cascade`), a stronger guarantee holds: before it mutates anything it enforces a **durable, decrypt-validated backup of both vaults on store** (see `bw_vault_tools.backup`; `--no-backup` opts out). It is not a Bitwarden account-disaster image — a JSON export is not a same-account restore (a `bw import` lands into a *new* vault); that is your responsibility (below).
 
 ### `bw-totp` — import Google Authenticator seeds
 

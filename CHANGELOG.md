@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.0 — durable, validated backup-before-sync gate
+
+- **Backup-before-sync safeguard (`backup.py`).** The unattended `bw-vault-cascade` now, before it
+  mutates *anything*, guarantees a validated, encrypted snapshot of **both** vaults is on durable
+  store (`data_home()/bw-vault-tools/backups/`, override via `--backup-dir` / `BW_VAULT_BACKUP_DIR`).
+  The gate runs **before** the import stage, so the snapshot captures the true pre-cascade state
+  (a bug in a later stage cannot bake itself into the "backup"). Each stored export is
+  **decrypt-round-trip validated** before it is trusted, the store keeps a `latest.json` pointer to
+  the newest good copy, older copies are pruned past a retention limit (never the current one), and
+  a backup newer than the last applied sync is treated as up-to-date. If a valid, up-to-date backup
+  cannot be produced, the cascade **refuses to run** (exit 2, nothing touched) instead of mutating
+  into the unknown.
+
+  This is complementary to, not a replacement for, the per-run `RunDir` baseline/journal that
+  `--undo` uses for reversible per-op rollback *inside* a run; it is a durable, validated
+  pre-state on persistent storage. It is **not** a Bitwarden account-disaster image (that needs
+  server-side restore) — see the README disclaimer.
+
+  Security note: the on-disk index is secret-free. Fingerprints are `sha256` of the **encrypted**
+  blob bytes (`sha256(file)`), an integrity marker — never of `content.content_key`, which folds in
+  the raw password/totp and would otherwise be an offline password oracle.
+
+  Mirrored in the `bw-cascade` orchestrator (see `--no-backup` to opt out — not recommended) and the
+  RUNBOOK.
+
 ## 0.2.0 — contextual dedup engine + restored snapshot module
 
 - **Contextual deduplication.** bw-dedup now adapts its grouping to the *user*, not a single rule:
