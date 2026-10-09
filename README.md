@@ -1,38 +1,47 @@
 # bw-vault-tools
 
-Local, unmanaged command-line tools for Bitwarden / Vaultwarden vaults, driven through the
-official `bw` CLI:
+Local tools that clean, deduplicate, and sync your **Bitwarden / Vaultwarden** vaults — working
+directly in the live vault through the official `bw` CLI. No cloud, no daemon, and no data leaves
+your machine.
 
-- **`bw-dedup`** *(implemented)* — in-place single-vault deduplicator. Reads a live vault via
-  `bw export`, computes a plan, and applies minimal per-item `bw edit`/`bw delete` deltas. Never
-  purge+reimport. The advanced successor to
-  [`bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup) (still
-  maintained as the simple file-based tool).
-- **`bw-import`** *(implemented)* — aggregate passwords from your installed browsers into the
-  live vault. Detects browsers (presence-only — never reads their stores), guides each browser's
-  own CSV export, and `bw create`s only the logins not already present (additive-only,
-  plan-then-approve, journalled undo).
-- **`bw-sync`** *(implemented)* — stateful, approval-gated, reversible **two-way sync** between
-  two vaults. A true 3-way merge against a persisted, encrypted last-synced snapshot (adds +
-  edits + lossless field-union merges + deletes, configurable conflict policy, passkey-guarded,
-  journalled undo).
-- **`bw-totp`** *(implemented)* — import **Google Authenticator** TOTP seeds into a vault. Decode
-  an export screenshot (or paste the `otpauth-migration://` URI), match each account to a login,
-  and set the seed where missing — skipping identical ones, never overwriting a different one
-  (duplicates instead), surfacing ambiguous matches for you to resolve. Journalled undo.
-- **`bw-vault-cascade`** — the unattended weekly cascade over **two** vaults, part of
-  `bw-vault-tools`: a validated **backup-before-sync** gate, then import → dedup A → dedup B →
-  reversible two-way sync, behind a conservative **loss-free** approver (loss-free dedup ops
-  auto-apply; anything destructive/ambiguous is held) with an optional reasoning-gateway digest.
-  Its code is the `bw_vault_tools.cascade` submodule; the standalone `bw-cascade` package is
-  archived.
+**Works with Bitwarden _and_ Vaultwarden** (and any Bitwarden-compatible server): you drive the
+same `bw` CLI you'd use by hand, whether your vault is on bitwarden.com or a self-hosted
+Vaultwarden.
 
-`bw-dedup` and `bw-sync` are **org-aware**: they read all your organizations read-only. Dedup
-clears personal logins that already live in an org (orgs are never written). An optional
-capacity-adaptive **sync-mirror** (replicate Vaultwarden orgs into a target org's collections,
-free-tier-aware) is built as a planning core; its live org-*write* apply is gated pending a test
-org. The tools are otherwise **personal-vault-scoped for writes** — they never modify org-shared
-items.
+**Who this is for — the terminal option.** You already keep your passwords in a vault and want to
+do more than the web UI lets you — deduplicate in place, pull in browser logins, or keep two vaults
+in sync — all reversible, and nothing destructive without your say-so. Prefer no terminal? See
+[bitwarden-vault-cleanup](https://github.com/no84by/bitwarden-vault-cleanup), the simple file-based
+entry to this same family.
+
+The five tools:
+
+- **`bw-dedup`** — deduplicate a single vault in place. Reads it with `bw export`, finds the
+  duplicates, and applies the smallest possible `bw edit`/`bw delete` changes — never a purge and
+  reimport. The advanced successor to
+  [`bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup) (still maintained
+  as the simple file-based tool).
+- **`bw-import`** — pull passwords from your installed browsers into the live vault. It only checks
+  that each browser is present (never reads their password stores), walks you through each browser's
+  own export, and `bw create`s only the logins that don't exist yet. Additive only, reversible.
+- **`bw-sync`** — reversible **two-way sync** between two vaults: a true 3-way merge against a
+  saved, encrypted snapshot of the last sync (adds, edits, lossless field merges, and deletes),
+  with a rule for which side wins a clash.
+- **`bw-totp`** — import **Google Authenticator** TOTP seeds into a vault. Decode an export
+  screenshot or paste the `otpauth-migration://` text, match each account to a login, and set the
+  seed where one is missing — never overwriting an existing different one, and always asking you
+  when a match is unclear. Reversible.
+- **`bw-vault-cascade`** — the unattended weekly run over **two** vaults, part of `bw-vault-tools`:
+  a backup-first gate, then import → dedup both vaults → reversible two-way sync, behind an
+  approver that auto-applies only the safe operations and holds anything destructive or ambiguous,
+  with an optional reasoning-gateway summary. Its code is the `bw_vault_tools.cascade` submodule;
+  the standalone `bw-cascade` package is archived.
+
+**Organization vaults are read-only to these tools.** `bw-dedup` reads your organizations and can
+clear a personal login that already exists verbatim in an org (the org copy is kept); it never
+edits or deletes org items, and `bw-sync` doesn't touch orgs. A future **sync-mirror** — replicating
+Vaultwarden orgs into a target org's collections — is planning-only and its write path is gated on a
+test org. Writes stay **personal-vault-scoped**.
 
 Together with [`bitwarden-vault-cleanup`](https://github.com/no84by/bitwarden-vault-cleanup),
 these form one family: **Manual** (the file-based cleaner), **CLI** (`bw-dedup`/`bw-import`/
@@ -156,13 +165,22 @@ creates **only** logins not already in your vault (re-running is a no-op).
 bw-sync --appdata-a "<DIR_A>" --appdata-b "<DIR_B>" --snapshot "<SNAPSHOT_PATH>"           # plan
 bw-sync --appdata-a "<DIR_A>" --appdata-b "<DIR_B>" --snapshot "<SNAPSHOT_PATH>" --apply   # apply
 ```
-First run pairs identical items and creates the divergent ones both ways. Later runs use the
-snapshot for a true 3-way merge (one-sided edits + lossless field-union merges + deletes), all
-gated and reversible. A genuine divergence unions notes/custom fields/URIs/TOTP from both sides
-and gates only an un-mergeable password clash. Conflict direction is configurable with
-`--conflict newest|a-wins|b-wins` (default `newest`); `a-wins`/`b-wins` make one vault canonical.
-Every `--apply` automatically writes an encrypted pre-mutation baseline export of **both** vaults
-before touching anything, on top of the per-op `--undo` journal — no manual backup step required. That baseline is a *per-run* reversibility artifact (kept inside each `runs/<tool>-<ts>/` dir, used by `--undo`). For the **unattended cascade** (`bw-vault-cascade`), a stronger guarantee holds: before it mutates anything it enforces a **durable, decrypt-validated backup of both vaults on store** (see `bw_vault_tools.backup`; `--no-backup` opts out). It is not a Bitwarden account-disaster image — a JSON export is not a same-account restore (a `bw import` lands into a *new* vault); that is your responsibility (below).
+First run pairs up matching items and creates the ones that exist on only one side. Later runs use
+the snapshot for a true 3-way merge: a one-sided edit, a lossless merge of fields that differ
+between the two sides, or a delete — all gated and reversible. When both sides changed the same item
+it unions the notes, custom fields, URIs and TOTP from both and only holds on a genuine password
+conflict. `--conflict newest|a-wins|b-wins` (default `newest`) picks which side wins a clash;
+`a-wins`/`b-wins` make one vault canonical.
+
+Every `--apply` writes an **encrypted baseline export of both vaults** before touching anything
+(you never back up by hand). Two layers of reversibility back this up: that per-run baseline (kept
+inside each `runs/bw-sync-<ts>/` dir, used by `--undo`) plus the ongoing per-op journal.
+
+> **For the unattended `bw-vault-cascade`, the backup is stronger:** before it mutates anything it
+> makes a **durable, decrypt-validated backup of both vaults** on disk (`bw_vault_tools.backup`;
+> `--no-backup` opts out). Note a JSON export is **not** a full-account restore — `bw import` lands
+> into a *new* vault, not the same one — so keeping your own fresh exports is still your job (see
+> the Disclaimer).
 
 ### `bw-totp` — import Google Authenticator seeds
 
