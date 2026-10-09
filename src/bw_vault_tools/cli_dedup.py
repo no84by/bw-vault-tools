@@ -55,11 +55,37 @@ def _apply_destructive(prof, op, by_id, run):
         merged = _merged_notes(group)
         if merged:
             keep["notes"] = merged
-        keep_totp = keep["login"].get("totp")         # keep the kept item's 2FA seed active, but
-        extra_totps = [{"name": "totp (merged dup)", "value": t, "type": 1}   # never drop a dup's
-                       for t in dict.fromkeys((e.get("login") or {}).get("totp") for e in group)
-                       if t and t != keep_totp]
+        # TOTP containment: keep the survivor's active 2FA seed, but if it has none while a merged
+        # copy did, promote that seed to active so a working authenticator secret is never lost.
+        # Any further distinct seeds are preserved as a deprecated custom field.
+        totps = [e["login"].get("totp") for e in group
+                 if (e.get("login") or {}).get("totp")]
+        active_totp = keep["login"].get("totp")
+        if not active_totp and totps:
+            winner = max((e for e in group if (e.get("login") or {}).get("totp")),
+                         key=lambda e: e.get("revisionDate", ""))
+            keep["login"]["totp"] = winner["login"]["totp"]
+            active_totp = keep["login"]["totp"]
+        extra_totps = [{"name": "TOTP seed (deprecated)", "value": t, "type": 1}
+                       for t in dict.fromkeys(t for t in totps)
+                       if t and t != active_totp]
+        # Preserve deprecated credentials from merged-away copies so nothing is lost: the active
+        # password stays the survivor's, while older ones are recorded in a clearly-labelled custom
+        # field (not the password field) — kept, but never promoted back to "the" password.
+        active_pw = keep["login"].get("password") or ""
+        old_pws, seen_pws = [], set()
+        for e in group:
+            p = (e.get("login") or {}).get("password") or ""
+            if p and p != active_pw and p not in seen_pws:
+                seen_pws.add(p)
+                old_pws.append(p)
+        old_pw_field = None
+        if old_pws:
+            old_pw_field = {"name": "Previous passwords (deprecated)",
+                            "value": " | ".join(old_pws), "type": 0}
         keep["fields"] = _merged_fields(group) + extra_totps   # keep every side's custom fields
+        if old_pw_field:
+            keep["fields"].append(old_pw_field)
         if op.keep_id not in run.completed_ids:
             run.record(op.keep_id, op.inverse())
             prof.edit(op.keep_id, keep)

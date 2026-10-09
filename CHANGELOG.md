@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0 — contextual dedup engine + restored snapshot module
+
+- **Contextual deduplication.** bw-dedup now adapts its grouping to the *user*, not a single rule:
+  a real email identity collapses across a site's sub-domains and URL forms to its registrable
+  domain, while a role/generic username (admin, support, …) stays pinned to the exact host, so
+  separate tenants of the same service are never fused. Identical-content detection now folds in the
+  password, TOTP seed and custom fields, so *rotated* credentials merge (losing nothing) instead of
+  being deleted. Merges record deprecated previous passwords in a clearly-labelled custom field and
+  contain TOTP seeds (promoting a seed to active when the survivor has none).
+- **Restored `snapshot.py`.** The shipped code read and wrote the encrypted last-synced snapshot for
+  bw-sync, but the module was never packaged, so `bw-sync` raised
+  `ImportError: cannot import name 'snapshot'`. It now ships (fixes issue #1).
+- **Secrets out of argv (PR #2).** `bw edit item` / `bw create item` take the item on stdin instead
+  of argv, and failures raise a sanitized `BwError` (never argv, stdin or stdout).
+
+Contributors: thanks to **@joarley** (issue #1) for the report that restored the snapshot module.
+
 ## 0.1.0 — first release
 
 Four local, reversible, plan-then-apply CLI tools for Bitwarden / Vaultwarden, driven through the

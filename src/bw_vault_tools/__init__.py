@@ -15,4 +15,4 @@ Planned modules (see docs/design/):
   cli_sync    bw-sync entrypoint
 """
 
-__version__ = "0.0.0"
+__version__ = "0.2.0"

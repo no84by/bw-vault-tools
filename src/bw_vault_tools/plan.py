@@ -106,17 +106,24 @@ def build_dedup_plan(items: list[dict], folders: list[dict], org_reference: list
         else:                                              # non-login / no-URI login / unknown
             p.preserved_ids.add(it["id"])
 
-    for group in identity.group_logins(dedup_input).values():
+    for group in identity.group_logins_dedup(dedup_input).values():
         if len(group) == 1:
             kept = group[0]
         else:
-            # Pure-delete is only safe when merging would change nothing: every member shares the
-            # same URI set AND the same notes (timestamps are irrelevant — identical dates do NOT
-            # imply identical content). Otherwise MERGE so no unique URI/note is ever lost.
-            def _uriset(e):
-                return frozenset(u["uri"] for u in (e["login"].get("uris") or []) if u.get("uri"))
-            identical_content = (len({_uriset(e) for e in group}) == 1
-                                 and len({(e.get("notes") or "").strip() for e in group}) == 1)
+            # Pure-delete is only safe when merging would change nothing: every member shares the same
+            # URI set, custom fields, notes, TOTP seed and password (timestamps are irrelevant —
+            # identical dates do NOT imply identical content). Otherwise MERGE so no unique URI/note/
+            # field is ever lost. A differing password keeps a group out of this shortcut so the older
+            # credential is preserved (de-emphasized in a field) instead of being dropped like before.
+            def _content(e):
+                login = e["login"]
+                return (frozenset(u["uri"] for u in (login.get("uris") or []) if u.get("uri")),
+                        tuple(sorted((str(f.get("name")), str(f.get("value")), str(f.get("type")))
+                                     for f in (e.get("fields") or []))),
+                        (e.get("notes") or "").strip(),
+                        login.get("totp"),
+                        login.get("password") or "")
+            identical_content = len({_content(e) for e in group}) == 1
             if identical_content:
                 kept = group[0]
                 for e in group[1:]:
