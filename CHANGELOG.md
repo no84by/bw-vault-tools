@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 — merged bw_cascade orchestration
+
+- **Fold `bw-cascade` into `bw_vault_tools`.** The standalone `bw-cascade` package — a thin
+  orchestration layer that already imported `bw_vault_tools` (backup, checkpoint, cli_dedup,
+  cli_import, cli_sync, sources, bw_adapter, keyprovider) and shelled the `bw` CLI only for a
+  status preflight — is now the `bw_vault_tools.cascade` / `.policy` / `.gateway` submodules. The
+  weekly unattended cascade (`backup → import → dedup A → dedup B → two-way sync`) is exposed as a
+  single new console script, `bw-vault-cascade = "bw_vault_tools.cascade:main"`: one package, one
+  set of CLI scripts, no separate `PYTHONPATH` join. Governance unchanged — a conservative
+  loss-free approver (loss-free dedup ops apply; anything destructive/ambiguous is held) backed by
+  an optional reasoning-gateway digest (env-gated via `REASONING_GATEWAY_URL`, stdlib only, no
+  baked-in URL) and the durable backup-before-sync gate below. The now-obsolete `bw-cascade`
+  package repo is archived with a redirect to `bw-vault-tools` v0.4.0.
+
 ## 0.3.0 — durable, validated backup-before-sync gate
 
 - **Backup-before-sync safeguard (`backup.py`).** The unattended `bw-vault-cascade` now, before it

@@ -20,6 +20,11 @@ official `bw` CLI:
   an export screenshot (or paste the `otpauth-migration://` URI), match each account to a login,
   and set the seed where missing — skipping identical ones, never overwriting a different one
   (duplicates instead), surfacing ambiguous matches for you to resolve. Journalled undo.
+- **`bw-vault-cascade`** *(implemented)* — the unattended weekly cascade over **two** vaults: a
+  validated **backup-before-sync** gate, then import → dedup A → dedup B → reversible two-way sync,
+  behind a conservative **loss-free** approver (loss-free dedup ops auto-apply; anything
+  destructive/ambiguous is held) with an optional reasoning-gateway digest. Its code now lives in
+  `bw_vault_tools.cascade` (the standalone `bw-cascade` package is archived).
 
 `bw-dedup` and `bw-sync` are **org-aware**: they read all your organizations read-only. Dedup
 clears personal logins that already live in an org (orgs are never written). An optional
@@ -156,7 +161,7 @@ gated and reversible. A genuine divergence unions notes/custom fields/URIs/TOTP 
 and gates only an un-mergeable password clash. Conflict direction is configurable with
 `--conflict newest|a-wins|b-wins` (default `newest`); `a-wins`/`b-wins` make one vault canonical.
 Every `--apply` automatically writes an encrypted pre-mutation baseline export of **both** vaults
-before touching anything, on top of the per-op `--undo` journal — no manual backup step required. That baseline is a *per-run* reversibility artifact (kept inside each `runs/<tool>-<ts>/` dir, used by `--undo`). For the **unattended cascade** (`bw-cascade`), a stronger guarantee holds: before it mutates anything it enforces a **durable, decrypt-validated backup of both vaults on store** (see `bw_vault_tools.backup`; `--no-backup` opts out). It is not a Bitwarden account-disaster image — a JSON export is not a same-account restore (a `bw import` lands into a *new* vault); that is your responsibility (below).
+before touching anything, on top of the per-op `--undo` journal — no manual backup step required. That baseline is a *per-run* reversibility artifact (kept inside each `runs/<tool>-<ts>/` dir, used by `--undo`). For the **unattended cascade** (`bw-vault-cascade`), a stronger guarantee holds: before it mutates anything it enforces a **durable, decrypt-validated backup of both vaults on store** (see `bw_vault_tools.backup`; `--no-backup` opts out). It is not a Bitwarden account-disaster image — a JSON export is not a same-account restore (a `bw import` lands into a *new* vault); that is your responsibility (below).
 
 ### `bw-totp` — import Google Authenticator seeds
 

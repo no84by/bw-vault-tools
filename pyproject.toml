@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bw-vault-tools"
-version = "0.3.0"
+version = "0.4.0"
 description = "Local CLI tools for Bitwarden/Vaultwarden: in-place dedup, reversible two-way sync, browser-password and Google-Authenticator import, driven through the bw CLI."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,6 +28,7 @@ bw-dedup = "bw_vault_tools.cli_dedup:main"
 bw-sync = "bw_vault_tools.cli_sync:main"
 bw-import = "bw_vault_tools.cli_import:main"
 bw-totp = "bw_vault_tools.cli_totp:main"
+bw-vault-cascade = "bw_vault_tools.cascade:main"
 
 [project.urls]
 Homepage = "https://github.com/no84by/bw-vault-tools"

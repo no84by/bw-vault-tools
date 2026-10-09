@@ -1,0 +1,24 @@
+[Unit]
+Description=bw-vault-tools weekly cascade (dedup + conservative two-way sync, gateway digest)
+Documentation=https://github.com/no84by/bw-vault-tools
+# System service running AS the user, so LoadCredentialEncrypted can use the host/TPM2 key (a user
+# service cannot). Conservative: loss-free work applies; destructive ops are HELD and reported.
+# Uses pre-unlocked bw SESSIONS (sealed in the credstore) — no master password, no 2FA. If a
+# session is ever invalidated (key rotation), the run fails and reports; re-seal a fresh session.
+# Install to /etc/systemd/system/. Seal the three creds into /etc/credstore.encrypted/ (see RUNBOOK).
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=xt8664
+Group=xt8664
+Environment=HOME=/home/xt8664
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=/home/xt8664/workspace/code/platform/bw-vault-tools/src
+Environment=REASONING_GATEWAY_URL=http://127.0.0.1:8787
+LoadCredentialEncrypted=bw_session_a:/etc/credstore.encrypted/bw-cascade-session-a.cred
+LoadCredentialEncrypted=bw_session_b:/etc/credstore.encrypted/bw-cascade-session-b.cred
+LoadCredentialEncrypted=snapshot_pass:/etc/credstore.encrypted/bw-cascade-snapshot.cred
+ExecStart=/usr/bin/bash -lc 'BW_SESSION_A="$(cat %d/bw_session_a)" BW_SESSION_B="$(cat %d/bw_session_b)" BWVT_SNAPSHOT_PASSPHRASE="$(cat %d/snapshot_pass)" exec python3 -m bw_vault_tools.cascade --appdata-a "/home/xt8664/.config/Bitwarden CLI" --appdata-b "/home/xt8664/.bw/bw-cloud" --snapshot "/home/xt8664/.local/share/bwvt/sync-snapshot.enc" --conflict a-wins'
+TimeoutStartSec=1800

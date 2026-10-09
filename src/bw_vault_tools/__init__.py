@@ -13,6 +13,9 @@ Planned modules (see docs/design/):
   tmpfs       /dev/shm staging + shred-on-exit
   cli_dedup   bw-dedup entrypoint
   cli_sync    bw-sync entrypoint
+  cascade    bw-vault-cascade entrypoint (conservative cascade, loss-free policy, gateway digest)
+  policy     loss-free approver + op labeling
+  gateway    reasoning-gateway digest client (env-gated, stdlib only)
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
