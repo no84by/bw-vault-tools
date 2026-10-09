@@ -198,6 +198,7 @@ trash + `--undo` + an encrypted pre-mutation baseline of each vault), you remain
 Always test with non-critical data if you're unsure. When in doubt, reverse the run with `--undo`
 or restore items from the 30-day trash.
 
+## License
 
 This project is licensed under the [MIT License](LICENSE).
 
