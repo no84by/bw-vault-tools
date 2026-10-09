@@ -20,11 +20,12 @@ official `bw` CLI:
   an export screenshot (or paste the `otpauth-migration://` URI), match each account to a login,
   and set the seed where missing — skipping identical ones, never overwriting a different one
   (duplicates instead), surfacing ambiguous matches for you to resolve. Journalled undo.
-- **`bw-vault-cascade`** *(implemented)* — the unattended weekly cascade over **two** vaults: a
-  validated **backup-before-sync** gate, then import → dedup A → dedup B → reversible two-way sync,
-  behind a conservative **loss-free** approver (loss-free dedup ops auto-apply; anything
-  destructive/ambiguous is held) with an optional reasoning-gateway digest. Its code now lives in
-  `bw_vault_tools.cascade` (the standalone `bw-cascade` package is archived).
+- **`bw-vault-cascade`** — the unattended weekly cascade over **two** vaults, part of
+  `bw-vault-tools`: a validated **backup-before-sync** gate, then import → dedup A → dedup B →
+  reversible two-way sync, behind a conservative **loss-free** approver (loss-free dedup ops
+  auto-apply; anything destructive/ambiguous is held) with an optional reasoning-gateway digest.
+  Its code is the `bw_vault_tools.cascade` submodule; the standalone `bw-cascade` package is
+  archived.
 
 `bw-dedup` and `bw-sync` are **org-aware**: they read all your organizations read-only. Dedup
 clears personal logins that already live in an org (orgs are never written). An optional
